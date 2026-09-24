@@ -1,0 +1,159 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id              Int       @id @default(autoincrement())
+  email           String    @unique
+  passwordHash    String
+  name            String?
+  isEmailVerified Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+
+  userRoles     UserRole[]
+  sessions      Session[]
+  subscriptions Subscription[]
+  conversations ChatConversation[]
+  webSearches   WebSearch[]
+  usageLogs     APIUsageLog[]
+}
+
+model Role {
+  id   Int    @id @default(autoincrement())
+  name String @unique
+
+  userRoles UserRole[]
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model Session {
+  id               Int       @id @default(autoincrement())
+  userId           Int
+  refreshTokenHash String
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Subscription {
+  id                 Int      @id @default(autoincrement())
+  userId             Int
+  plan               String   @default("FREE")
+  status             String   @default("ACTIVE")
+  requestLimit       Int      @default(100)
+  usedRequests       Int      @default(0)
+  currentPeriodStart DateTime
+  currentPeriodEnd   DateTime
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model AIProvider {
+  id              Int      @id @default(autoincrement())
+  name            String
+  type            String
+  apiKeyEncrypted String?
+  isEnabled       Boolean  @default(true)
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  conversations ChatConversation[]
+
+  @@index([type])
+}
+
+model ChatConversation {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  title      String?
+  providerId Int?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider AIProvider?   @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@index([userId])
+  @@index([providerId])
+}
+
+model ChatMessage {
+  id             Int      @id @default(autoincrement())
+  conversationId Int
+  role           String
+  content        String
+  createdAt      DateTime @default(now())
+
+  conversation ChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId])
+}
+
+model WebSearch {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  query       String
+  provider    String?
+  resultCount Int      @default(0)
+  createdAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model SearchCache {
+  id        Int      @id @default(autoincrement())
+  queryHash String   @unique
+  query     String
+  results   Json
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model APIUsageLog {
+  id           Int      @id @default(autoincrement())
+  userId       Int?
+  endpoint     String
+  method       String
+  provider     String?
+  tokensUsed   Int      @default(0)
+  statusCode   Int
+  responseTime Int
+  createdAt    DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([endpoint])
+}
