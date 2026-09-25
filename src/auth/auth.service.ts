@@ -83,7 +83,7 @@ export class AuthService {
       },
     });
 
-    if (!user) {
+    if (!user || user.deletedAt) {
       throw new UnauthorizedException(
         'Invalid email or password',
       );
