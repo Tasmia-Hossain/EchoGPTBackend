@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -7,13 +8,26 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateAiProviderDto } from './dto/create-ai-provider.dto';
 import { UpdateAiProviderDto } from './dto/update-ai-provider.dto';
+import { AiProviderCryptoService } from './crypto/ai-provider-crypto.service';
 
 @Injectable()
 export class AiProvidersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cryptoService: AiProviderCryptoService,
+  ) {}
 
   async create(createDto: CreateAiProviderDto) {
-    if (createDto.isDefault) {
+    const isEnabled = createDto.isEnabled ?? true;
+    const isDefault = createDto.isDefault ?? false;
+
+    if (isDefault && !isEnabled) {
+      throw new BadRequestException(
+        'A disabled provider cannot be set as default',
+      );
+    }
+
+    if (isDefault) {
       await this.prisma.aIProvider.updateMany({
         data: {
           isDefault: false,
@@ -21,13 +35,17 @@ export class AiProvidersService {
       });
     }
 
+    const encryptedApiKey = createDto.apiKey
+      ? this.cryptoService.encrypt(createDto.apiKey)
+      : null;
+
     return this.prisma.aIProvider.create({
       data: {
         name: createDto.name,
         type: createDto.type,
-        apiKeyEncrypted: createDto.apiKey ?? null,
-        isEnabled: createDto.isEnabled ?? true,
-        isDefault: createDto.isDefault ?? false,
+        apiKeyEncrypted: encryptedApiKey,
+        isEnabled,
+        isDefault,
       },
       select: {
         id: true,
@@ -80,9 +98,27 @@ export class AiProvidersService {
   }
 
   async update(id: number, updateDto: UpdateAiProviderDto) {
-    await this.findOne(id);
+    const existingProvider = await this.prisma.aIProvider.findUnique({
+      where: { id },
+    });
 
-    if (updateDto.isDefault) {
+    if (!existingProvider) {
+      throw new NotFoundException('AI provider not found');
+    }
+
+    const newIsEnabled =
+      updateDto.isEnabled ?? existingProvider.isEnabled;
+
+    const newIsDefault =
+      updateDto.isDefault ?? existingProvider.isDefault;
+
+    if (newIsDefault && !newIsEnabled) {
+      throw new BadRequestException(
+        'A disabled provider cannot be set as default',
+      );
+    }
+
+    if (newIsDefault) {
       await this.prisma.aIProvider.updateMany({
         where: {
           id: {
@@ -95,23 +131,36 @@ export class AiProvidersService {
       });
     }
 
+    const encryptedApiKey =
+      updateDto.apiKey !== undefined
+        ? this.cryptoService.encrypt(updateDto.apiKey)
+        : undefined;
+
     return this.prisma.aIProvider.update({
       where: { id },
       data: {
         ...(updateDto.name !== undefined && {
           name: updateDto.name,
         }),
+
         ...(updateDto.type !== undefined && {
           type: updateDto.type,
         }),
-        ...(updateDto.apiKey !== undefined && {
-          apiKeyEncrypted: updateDto.apiKey,
+
+        ...(encryptedApiKey !== undefined && {
+          apiKeyEncrypted: encryptedApiKey,
         }),
+
         ...(updateDto.isEnabled !== undefined && {
           isEnabled: updateDto.isEnabled,
         }),
+
         ...(updateDto.isDefault !== undefined && {
           isDefault: updateDto.isDefault,
+        }),
+
+        ...(updateDto.isEnabled === false && {
+          isDefault: false,
         }),
       },
       select: {
