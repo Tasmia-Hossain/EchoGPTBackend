@@ -10,9 +10,7 @@ import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class UsersService {
-  constructor(
-    private readonly prisma: PrismaService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getProfile(userId: number) {
     const user = await this.prisma.user.findUnique({
@@ -54,42 +52,38 @@ export class UsersService {
     }
 
     if (data.email && data.email !== user.email) {
-      const existingUser =
-        await this.prisma.user.findUnique({
-          where: {
-            email: data.email,
-          },
-        });
+      const existingUser = await this.prisma.user.findUnique({
+        where: {
+          email: data.email,
+        },
+      });
 
       if (existingUser) {
-        throw new ConflictException(
-          'Email already registered',
-        );
+        throw new ConflictException('Email already registered');
       }
     }
 
-    const updatedUser =
-      await this.prisma.user.update({
-        where: {
-          id: userId,
-        },
-        data: {
-          ...(data.email !== undefined && {
-            email: data.email,
-          }),
-          ...(data.name !== undefined && {
-            name: data.name,
-          }),
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          isEmailVerified: true,
-          createdAt: true,
-          updatedAt: true,
-        },
-      });
+    const updatedUser = await this.prisma.user.update({
+      where: {
+        id: userId,
+      },
+      data: {
+        ...(data.email !== undefined && {
+          email: data.email,
+        }),
+        ...(data.name !== undefined && {
+          name: data.name,
+        }),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isEmailVerified: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
     return updatedUser;
   }
@@ -140,43 +134,151 @@ export class UsersService {
   }
 
   async deleteAccount(userId: number) {
-  const user = await this.prisma.user.findUnique({
-    where: {
-      id: userId,
-    },
-  });
-
-  if (!user) {
-    throw new NotFoundException('User not found');
-  }
-
-  if (user.deletedAt) {
-    throw new NotFoundException('User not found');
-  }
-
-  await this.prisma.$transaction([
-    this.prisma.user.update({
+    const user = await this.prisma.user.findUnique({
       where: {
         id: userId,
       },
-      data: {
-        deletedAt: new Date(),
-      },
-    }),
+    });
 
-    this.prisma.session.updateMany({
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    if (user.deletedAt) {
+      throw new NotFoundException('User not found');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          deletedAt: new Date(),
+        },
+      }),
+
+      this.prisma.session.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      }),
+    ]);
+
+    return {
+      message: 'Account deleted successfully',
+    };
+  }
+
+  async getAllUsers() {
+    return this.prisma.user.findMany({
       where: {
-        userId,
-        revokedAt: null,
+        deletedAt: null,
       },
-      data: {
-        revokedAt: new Date(),
+      orderBy: {
+        createdAt: 'desc',
       },
-    }),
-  ]);
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        isEmailVerified: true,
+        createdAt: true,
+        updatedAt: true,
+        userRoles: {
+          select: {
+            role: {
+              select: {
+                name: true,
+              },
+            },
+          },
+        },
+        subscriptions: {
+          orderBy: {
+            createdAt: 'desc',
+          },
+          take: 1,
+          select: {
+            plan: true,
+            status: true,
+            usedRequests: true,
+            requestLimit: true,
+            currentPeriodStart: true,
+            currentPeriodEnd: true,
+          },
+        },
+      },
+    });
+  }
 
-  return {
-    message: 'Account deleted successfully',
-  };
-}
+  async getAdminDashboardStats() {
+    const [
+      totalUsers,
+      activeUsers,
+      adminUsers,
+      freeSubscriptions,
+      premiumSubscriptions,
+      totalConversations,
+      totalWebSearches,
+      totalApiRequests,
+    ] = await Promise.all([
+      this.prisma.user.count(),
+
+      this.prisma.user.count({
+        where: {
+          deletedAt: null,
+        },
+      }),
+
+      this.prisma.userRole.count({
+        where: {
+          role: {
+            name: 'ADMIN',
+          },
+        },
+      }),
+
+      this.prisma.subscription.count({
+        where: {
+          plan: 'FREE',
+          status: 'ACTIVE',
+        },
+      }),
+
+      this.prisma.subscription.count({
+        where: {
+          plan: 'PREMIUM',
+          status: 'ACTIVE',
+        },
+      }),
+
+      this.prisma.chatConversation.count(),
+
+      this.prisma.webSearch.count(),
+
+      this.prisma.aPIUsageLog.count(),
+    ]);
+
+    return {
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        admins: adminUsers,
+      },
+      subscriptions: {
+        free: freeSubscriptions,
+        premium: premiumSubscriptions,
+      },
+      activity: {
+        chatConversations: totalConversations,
+        webSearches: totalWebSearches,
+        apiRequests: totalApiRequests,
+      },
+    };
+  }
 }

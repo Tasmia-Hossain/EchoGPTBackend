@@ -8,7 +8,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Request } from 'express';
 
 import { UsersService } from './users.service';
@@ -26,6 +31,8 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+@ApiTags('Users')
+@ApiBearerAuth()
 @Controller('users')
 export class UsersController {
   constructor(
@@ -34,6 +41,15 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiResponse({
+    status: 200,
+    description: 'User profile returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
   async getProfile(
     @Req() request: AuthenticatedRequest,
   ) {
@@ -44,6 +60,15 @@ export class UsersController {
 
   @Patch('me')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile updated successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
   async updateProfile(
     @Req() request: AuthenticatedRequest,
     @Body() updateProfileDto: UpdateProfileDto,
@@ -56,6 +81,15 @@ export class UsersController {
 
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Change current user password' })
+  @ApiResponse({
+    status: 200,
+    description: 'Password changed successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required or current password is incorrect.',
+  })
   async changePassword(
     @Req() request: AuthenticatedRequest,
     @Body() changePasswordDto: ChangePasswordDto,
@@ -69,6 +103,15 @@ export class UsersController {
 
   @Delete('me')
   @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Delete current user account' })
+  @ApiResponse({
+    status: 200,
+    description: 'Account deleted successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
   async deleteAccount(
     @Req() request: AuthenticatedRequest,
   ) {
@@ -80,9 +123,38 @@ export class UsersController {
   @Get('admin-test')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
+  @ApiOperation({ summary: 'Test admin access' })
+  @ApiResponse({
+    status: 200,
+    description: 'Admin access granted.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
   async adminTest() {
     return {
       message: 'Admin access granted',
     };
+  }
+
+  @Get('admin/users')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Get all users (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of all active users.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  async getAllUsers() {
+    return this.usersService.getAllUsers();
   }
 }
