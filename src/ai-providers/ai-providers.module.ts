@@ -10,5 +10,9 @@ import { AiProviderCryptoService } from './crypto/ai-provider-crypto.service';
     AiProvidersService,
     AiProviderCryptoService,
   ],
+  exports: [
+    AiProvidersService,
+    AiProviderCryptoService,
+  ],
 })
 export class AiProvidersModule {}
