@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { validate } from './config/env.validation';
 import { UsersModule } from './users/users.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { AiProvidersModule } from './ai-providers/ai-providers.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
     AuthModule,
     UsersModule,
     SubscriptionsModule,
+    AiProvidersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
