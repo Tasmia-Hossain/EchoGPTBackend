@@ -281,4 +281,45 @@ export class UsersService {
       },
     };
   }
+
+  async getAdminUsageAnalytics() {
+    const [
+      totalRequests,
+      successfulRequests,
+      failedRequests,
+      totalTokensUsed,
+    ] = await Promise.all([
+      this.prisma.aPIUsageLog.count(),
+
+      this.prisma.aPIUsageLog.count({
+        where: {
+          statusCode: {
+            gte: 200,
+            lt: 400,
+          },
+        },
+      }),
+
+      this.prisma.aPIUsageLog.count({
+        where: {
+          statusCode: {
+            gte: 400,
+          },
+        },
+      }),
+
+      this.prisma.aPIUsageLog.aggregate({
+        _sum: {
+          tokensUsed: true,
+        },
+      }),
+    ]);
+
+    return {
+      totalRequests,
+      successfulRequests,
+      failedRequests,
+      totalTokensUsed: totalTokensUsed._sum.tokensUsed ?? 0,
+    };
+  }
 }

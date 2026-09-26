@@ -153,6 +153,40 @@ export class SubscriptionsService {
     };
   }
 
+  async getAllSubscriptions() {
+    const subscriptions = await this.prisma.subscription.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      select: {
+        id: true,
+        plan: true,
+        status: true,
+        requestLimit: true,
+        usedRequests: true,
+        currentPeriodStart: true,
+        currentPeriodEnd: true,
+        createdAt: true,
+        updatedAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
+    });
+
+    return subscriptions.map((subscription) => ({
+      ...subscription,
+      remainingRequests: Math.max(
+        subscription.requestLimit - subscription.usedRequests,
+        0,
+      ),
+    }));
+  }
+
   private async getActiveSubscription(userId: number) {
     const subscription = await this.prisma.subscription.findFirst({
       where: {

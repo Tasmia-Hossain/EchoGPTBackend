@@ -19,7 +19,6 @@ import { Request } from 'express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
-
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -88,7 +87,8 @@ export class UsersController {
   })
   @ApiResponse({
     status: 401,
-    description: 'Authentication required or current password is incorrect.',
+    description:
+      'Authentication required or current password is incorrect.',
   })
   async changePassword(
     @Req() request: AuthenticatedRequest,
@@ -156,5 +156,49 @@ export class UsersController {
   })
   async getAllUsers() {
     return this.usersService.getAllUsers();
+  }
+
+  @Get('admin/dashboard')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({ summary: 'Get admin dashboard statistics' })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Admin dashboard statistics returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  async getAdminDashboardStats() {
+    return this.usersService.getAdminDashboardStats();
+  }
+
+  @Get('admin/usage')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Get API usage analytics (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'API usage analytics returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  async getAdminUsageAnalytics() {
+    return this.usersService.getAdminUsageAnalytics();
   }
 }
