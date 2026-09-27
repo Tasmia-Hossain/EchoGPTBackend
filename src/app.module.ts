@@ -11,9 +11,12 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { AiProvidersModule } from './ai-providers/ai-providers.module';
 import { ChatModule } from './chat/chat.module';
 import { SearchModule } from './search/search.module';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
+    ThrottlerModule.forRoot([{ ttl: 60000, limit: 20 }]),
     ConfigModule.forRoot({
       isGlobal: true,
       validate,
@@ -27,6 +30,9 @@ import { SearchModule } from './search/search.module';
     SearchModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule {}
