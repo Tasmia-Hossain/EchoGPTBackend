@@ -322,4 +322,30 @@ export class UsersService {
       totalTokensUsed: totalTokensUsed._sum.tokensUsed ?? 0,
     };
   }
+
+  async getAdminRequestLogs() {
+    return this.prisma.aPIUsageLog.findMany({
+      orderBy: {
+        createdAt: 'desc',
+      },
+      take: 100,
+      select: {
+        id: true,
+        endpoint: true,
+        method: true,
+        provider: true,
+        statusCode: true,
+        responseTime: true,
+        tokensUsed: true,
+        createdAt: true,
+        user: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+          },
+        },
+      },
+    });
+  }
 }

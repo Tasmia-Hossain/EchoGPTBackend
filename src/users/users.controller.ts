@@ -19,6 +19,7 @@ import { Request } from 'express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -37,6 +38,10 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
   ) {}
+
+  // =========================
+  // Current User
+  // =========================
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
@@ -120,6 +125,10 @@ export class UsersController {
     );
   }
 
+  // =========================
+  // Admin
+  // =========================
+
   @Get('admin-test')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
@@ -141,7 +150,9 @@ export class UsersController {
   @Get('admin/users')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Get all users (Admin only)' })
+  @ApiOperation({
+    summary: 'Get all users (Admin only)',
+  })
   @ApiResponse({
     status: 200,
     description: 'List of all active users.',
@@ -161,7 +172,9 @@ export class UsersController {
   @Get('admin/dashboard')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Get admin dashboard statistics' })
+  @ApiOperation({
+    summary: 'Get admin dashboard statistics',
+  })
   @ApiResponse({
     status: 200,
     description:
