@@ -17,6 +17,7 @@ import {
 import { Request } from 'express';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
 import { SearchDto } from './dto/search.dto';
 import { SearchService } from './search.service';
 
@@ -32,17 +33,23 @@ interface AuthenticatedRequest extends Request {
 @Controller('search')
 @UseGuards(JwtAuthGuard)
 export class SearchController {
-  constructor(private readonly searchService: SearchService) {}
+  constructor(
+    private readonly searchService: SearchService,
+  ) {}
 
   @Post()
-  @ApiOperation({ summary: 'Search the web' })
+  @ApiOperation({
+    summary: 'Search the web',
+  })
   @ApiResponse({
-    status: 200,
-    description: 'Search results returned successfully.',
+    status: 201,
+    description:
+      'Search results returned successfully.',
   })
   @ApiResponse({
     status: 400,
-    description: 'Search query is invalid.',
+    description:
+      'Invalid search query or subscription request limit exceeded.',
   })
   @ApiResponse({
     status: 401,
@@ -50,7 +57,8 @@ export class SearchController {
   })
   @ApiResponse({
     status: 503,
-    description: 'Search provider is unavailable.',
+    description:
+      'Search provider is unavailable.',
   })
   async search(
     @Req() request: AuthenticatedRequest,
@@ -63,44 +71,63 @@ export class SearchController {
   }
 
   @Get('history')
-  @ApiOperation({ summary: 'Get search history' })
+  @ApiOperation({
+    summary: 'Get current user search history',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Search history returned successfully.',
+    description:
+      'Search history returned successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
   })
-  async getHistory(@Req() request: AuthenticatedRequest) {
-    return this.searchService.getHistory(request.user.userId);
+  async getHistory(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.searchService.getHistory(
+      request.user.userId,
+    );
   }
 
   @Get('recent')
-  @ApiOperation({ summary: 'Get recent searches' })
+  @ApiOperation({
+    summary: 'Get recent searches',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Recent searches returned successfully.',
+    description:
+      'Recent searches returned successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
   })
-  async getRecentSearches(@Req() request: AuthenticatedRequest) {
-    return this.searchService.getRecentSearches(request.user.userId);
+  async getRecentSearches(
+    @Req() request: AuthenticatedRequest,
+  ) {
+    return this.searchService.getRecentSearches(
+      request.user.userId,
+    );
   }
 
   @Get('suggestions')
-  @ApiOperation({ summary: 'Get search suggestions' })
+  @ApiOperation({
+    summary: 'Get search suggestions',
+  })
   @ApiQuery({
     name: 'q',
     required: true,
-    description: 'Search text used to generate suggestions.',
-    example: 'nest',
+    type: String,
+    description:
+      'Search text used to generate suggestions.',
+    example: 'nestjs',
   })
   @ApiResponse({
     status: 200,
-    description: 'Search suggestions returned successfully.',
+    description:
+      'Search suggestions returned successfully.',
   })
   @ApiResponse({
     status: 401,

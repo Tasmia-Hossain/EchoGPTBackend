@@ -6,8 +6,13 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-
 import { Request } from 'express';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -23,6 +28,7 @@ interface AuthenticatedRequest extends Request {
   };
 }
 
+@ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -30,6 +36,21 @@ export class AuthController {
   ) {}
 
   @Post('register')
+  @ApiOperation({
+    summary: 'Register a new user',
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'User registered successfully.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already registered.',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid registration data.',
+  })
   async register(
     @Body() registerDto: RegisterDto,
   ) {
@@ -41,6 +62,18 @@ export class AuthController {
   }
 
   @Post('login')
+  @ApiOperation({
+    summary: 'Login user',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Login successful. Access and refresh tokens returned.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid email or password.',
+  })
   async login(
     @Body() loginDto: LoginDto,
   ) {
@@ -51,6 +84,18 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @ApiOperation({
+    summary: 'Refresh access token',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Access token refreshed successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token.',
+  })
   async refresh(
     @Body() refreshTokenDto: RefreshTokenDto,
   ) {
@@ -60,6 +105,18 @@ export class AuthController {
   }
 
   @Post('logout')
+  @ApiOperation({
+    summary: 'Logout user',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'User logged out successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Invalid or expired refresh token.',
+  })
   async logout(
     @Body() logoutDto: LogoutDto,
   ) {
@@ -70,6 +127,19 @@ export class AuthController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Get current authenticated user',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Current user information returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
   async me(
     @Req() request: AuthenticatedRequest,
   ) {

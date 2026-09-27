@@ -8,14 +8,12 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-
 import { Request } from 'express';
 
 import { UsersService } from './users.service';
@@ -47,14 +45,21 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Get current user profile' })
+  @ApiOperation({
+    summary: 'Get current user profile',
+  })
   @ApiResponse({
     status: 200,
-    description: 'User profile returned successfully.',
+    description:
+      'Current user profile returned successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
   })
   async getProfile(
     @Req() request: AuthenticatedRequest,
@@ -66,14 +71,25 @@ export class UsersController {
 
   @Patch('me')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Update current user profile' })
+  @ApiOperation({
+    summary: 'Update current user profile',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Profile updated successfully.',
+    description:
+      'User profile updated successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'Email already registered.',
   })
   async updateProfile(
     @Req() request: AuthenticatedRequest,
@@ -87,15 +103,22 @@ export class UsersController {
 
   @Post('change-password')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Change current user password' })
+  @ApiOperation({
+    summary: 'Change current user password',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Password changed successfully.',
+    description:
+      'Password changed successfully.',
   })
   @ApiResponse({
     status: 401,
     description:
       'Authentication required or current password is incorrect.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
   })
   async changePassword(
     @Req() request: AuthenticatedRequest,
@@ -110,14 +133,21 @@ export class UsersController {
 
   @Delete('me')
   @UseGuards(JwtAuthGuard)
-  @ApiOperation({ summary: 'Delete current user account' })
+  @ApiOperation({
+    summary: 'Delete current user account',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Account deleted successfully.',
+    description:
+      'User account deleted successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'User not found.',
   })
   async deleteAccount(
     @Req() request: AuthenticatedRequest,
@@ -134,10 +164,16 @@ export class UsersController {
   @Get('admin-test')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
-  @ApiOperation({ summary: 'Test admin access' })
+  @ApiOperation({
+    summary: 'Test admin role access',
+  })
   @ApiResponse({
     status: 200,
     description: 'Admin access granted.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
   })
   @ApiResponse({
     status: 403,
@@ -153,11 +189,12 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get all users (Admin only)',
+    summary: 'Get all active users (Admin only)',
   })
   @ApiResponse({
     status: 200,
-    description: 'List of all active users.',
+    description:
+      'List of all active users returned successfully.',
   })
   @ApiResponse({
     status: 401,
@@ -175,7 +212,8 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get admin dashboard statistics',
+    summary:
+      'Get admin dashboard statistics (Admin only)',
   })
   @ApiResponse({
     status: 200,
@@ -198,7 +236,8 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get API usage analytics (Admin only)',
+    summary:
+      'Get API usage analytics (Admin only)',
   })
   @ApiResponse({
     status: 200,
@@ -221,12 +260,13 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get API request logs (Admin only)',
+    summary:
+      'Get latest API request logs (Admin only)',
   })
   @ApiResponse({
     status: 200,
     description:
-      'API request logs returned successfully.',
+      'Latest API request logs returned successfully.',
   })
   @ApiResponse({
     status: 401,
@@ -244,12 +284,13 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get system health (Admin only)',
+    summary:
+      'Get system health information (Admin only)',
   })
   @ApiResponse({
     status: 200,
     description:
-      'System health returned successfully.',
+      'System health information returned successfully.',
   })
   @ApiResponse({
     status: 401,

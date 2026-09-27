@@ -36,14 +36,21 @@ export class SubscriptionsController {
   ) {}
 
   @Get('me')
-  @ApiOperation({ summary: 'Get current user subscription' })
+  @ApiOperation({
+    summary: 'Get current user subscription',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Current subscription returned successfully.',
+    description:
+      'Current subscription returned successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Active subscription not found.',
   })
   async getMySubscription(
     @Req() request: AuthenticatedRequest,
@@ -54,18 +61,26 @@ export class SubscriptionsController {
   }
 
   @Post('upgrade')
-  @ApiOperation({ summary: 'Upgrade subscription to Premium' })
+  @ApiOperation({
+    summary: 'Upgrade current subscription to Premium',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Subscription upgraded successfully.',
+    description:
+      'Subscription upgraded to Premium successfully.',
   })
   @ApiResponse({
     status: 400,
-    description: 'User already has a Premium subscription.',
+    description:
+      'User already has a Premium subscription.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Active subscription not found.',
   })
   async upgrade(
     @Req() request: AuthenticatedRequest,
@@ -76,18 +91,26 @@ export class SubscriptionsController {
   }
 
   @Post('downgrade')
-  @ApiOperation({ summary: 'Downgrade subscription to Free' })
+  @ApiOperation({
+    summary: 'Downgrade current subscription to Free',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Subscription downgraded successfully.',
+    description:
+      'Subscription downgraded to Free successfully.',
   })
   @ApiResponse({
     status: 400,
-    description: 'User already has a Free subscription.',
+    description:
+      'User already has a Free subscription.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Active subscription not found.',
   })
   async downgrade(
     @Req() request: AuthenticatedRequest,
@@ -98,14 +121,21 @@ export class SubscriptionsController {
   }
 
   @Get('usage')
-  @ApiOperation({ summary: 'Get current subscription usage' })
+  @ApiOperation({
+    summary: 'Get current subscription usage',
+  })
   @ApiResponse({
     status: 200,
-    description: 'Subscription usage returned successfully.',
+    description:
+      'Subscription usage returned successfully.',
   })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Active subscription not found.',
   })
   async getUsage(
     @Req() request: AuthenticatedRequest,
@@ -119,11 +149,13 @@ export class SubscriptionsController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary: 'Get all subscriptions (Admin only)',
+    summary:
+      'Get all user subscriptions (Admin only)',
   })
   @ApiResponse({
     status: 200,
-    description: 'All subscriptions returned successfully.',
+    description:
+      'All subscriptions returned successfully.',
   })
   @ApiResponse({
     status: 401,
