@@ -36,6 +36,21 @@ export class AiProviderManagerService {
     return provider.chat(request);
   }
 
+  async healthCheck(
+    type: string,
+    apiKey: string,
+  ): Promise<void> {
+    const provider = this.getProvider(type);
+
+    if (!provider) {
+      throw new BadRequestException(
+        `Unsupported AI provider: ${type}`,
+      );
+    }
+
+    await provider.healthCheck(apiKey);
+  }
+
   private getProvider(
     type: string,
   ): AiProvider | null {

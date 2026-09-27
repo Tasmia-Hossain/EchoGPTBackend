@@ -9,6 +9,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -41,8 +42,7 @@ export class AiProvidersController {
   })
   @ApiResponse({
     status: 201,
-    description:
-      'AI provider created successfully.',
+    description: 'AI provider created successfully.',
   })
   @ApiResponse({
     status: 400,
@@ -69,8 +69,7 @@ export class AiProvidersController {
   })
   @ApiResponse({
     status: 200,
-    description:
-      'AI providers returned successfully.',
+    description: 'AI providers returned successfully.',
   })
   @ApiResponse({
     status: 401,
@@ -96,8 +95,7 @@ export class AiProvidersController {
   })
   @ApiResponse({
     status: 200,
-    description:
-      'AI provider returned successfully.',
+    description: 'AI provider returned successfully.',
   })
   @ApiResponse({
     status: 401,
@@ -115,6 +113,44 @@ export class AiProvidersController {
     @Param('id', ParseIntPipe) id: number,
   ) {
     return this.aiProvidersService.findOne(id);
+  }
+
+  @Get(':id/health')
+  @ApiOperation({
+    summary: 'Check AI provider health (Admin only)',
+  })
+  @ApiParam({
+    name: 'id',
+    type: Number,
+    example: 1,
+    description: 'AI provider ID.',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'AI provider health status returned successfully.',
+  })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Provider is disabled or API key is not configured.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'AI provider not found.',
+  })
+  async healthCheck(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.aiProvidersService.healthCheck(id);
   }
 
   @Patch(':id')

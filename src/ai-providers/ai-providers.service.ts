@@ -9,12 +9,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateAiProviderDto } from './dto/create-ai-provider.dto';
 import { UpdateAiProviderDto } from './dto/update-ai-provider.dto';
 import { AiProviderCryptoService } from './crypto/ai-provider-crypto.service';
+import { AiProviderManagerService } from '../chat/providers/ai-provider-manager.service';
 
 @Injectable()
 export class AiProvidersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cryptoService: AiProviderCryptoService,
+    private readonly aiProviderManager: AiProviderManagerService,
   ) {}
 
   async create(createDto: CreateAiProviderDto) {
@@ -97,13 +99,71 @@ export class AiProvidersService {
     return provider;
   }
 
-  async update(id: number, updateDto: UpdateAiProviderDto) {
-    const existingProvider = await this.prisma.aIProvider.findUnique({
+  async healthCheck(id: number) {
+    const provider = await this.prisma.aIProvider.findUnique({
       where: { id },
     });
 
-    if (!existingProvider) {
+    if (!provider) {
       throw new NotFoundException('AI provider not found');
+    }
+
+    if (!provider.isEnabled) {
+      throw new BadRequestException(
+        'AI provider is disabled',
+      );
+    }
+
+    if (!provider.apiKeyEncrypted) {
+      throw new BadRequestException(
+        'AI provider API key is not configured',
+      );
+    }
+
+    const apiKey = this.cryptoService.decrypt(
+      provider.apiKeyEncrypted,
+    );
+
+    const startedAt = Date.now();
+
+    try {
+      await this.aiProviderManager.healthCheck(
+        provider.type,
+        apiKey,
+      );
+
+      return {
+        provider: {
+          id: provider.id,
+          name: provider.name,
+          type: provider.type,
+        },
+        status: 'UP',
+        responseTimeMs: Date.now() - startedAt,
+      };
+    } catch {
+      return {
+        provider: {
+          id: provider.id,
+          name: provider.name,
+          type: provider.type,
+        },
+        status: 'DOWN',
+        responseTimeMs: Date.now() - startedAt,
+      };
+    }
+  }
+
+  async update(id: number, updateDto: UpdateAiProviderDto) {
+    const existingProvider =
+      await this.prisma.aIProvider.findUnique({
+        where: { id },
+      });
+
+    if (!existingProvider) {
+      throw new NotFoundException(
+        'AI provider not found',
+      );
     }
 
     const newIsEnabled =

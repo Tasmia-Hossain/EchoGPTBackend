@@ -18,7 +18,10 @@ export class GeminiProvider implements AiProvider {
         content: request.prompt,
       },
     ].map((message) => ({
-      role: message.role === 'assistant' ? 'model' : 'user',
+      role:
+        message.role === 'assistant'
+          ? 'model'
+          : 'user',
       parts: [
         {
           text: message.content,
@@ -73,5 +76,25 @@ export class GeminiProvider implements AiProvider {
     return {
       content,
     };
+  }
+
+  async healthCheck(apiKey: string): Promise<void> {
+    const response = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models',
+      {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': apiKey,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      throw new Error(
+        `Gemini health check failed: ${response.status} ${errorText}`,
+      );
+    }
   }
 }

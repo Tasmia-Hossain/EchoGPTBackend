@@ -13,4 +13,5 @@ export interface AiChatResponse {
 
 export interface AiProvider {
   chat(request: AiChatRequest): Promise<AiChatResponse>;
+  healthCheck(apiKey: string): Promise<void>;
 }

@@ -65,4 +65,25 @@ export class AnthropicProvider implements AiProvider {
       content,
     };
   }
+
+  async healthCheck(apiKey: string): Promise<void> {
+    const response = await fetch(
+      'https://api.anthropic.com/v1/models',
+      {
+        method: 'GET',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      throw new Error(
+        `Anthropic health check failed: ${response.status} ${errorText}`,
+      );
+    }
+  }
 }

@@ -64,4 +64,24 @@ export class OpenAiProvider implements AiProvider {
       content,
     };
   }
+
+  async healthCheck(apiKey: string): Promise<void> {
+    const response = await fetch(
+      'https://api.openai.com/v1/models',
+      {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+      },
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+
+      throw new Error(
+        `OpenAI health check failed: ${response.status} ${errorText}`,
+      );
+    }
+  }
 }
