@@ -8,12 +8,14 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
+
 import {
   ApiBearerAuth,
   ApiOperation,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+
 import { Request } from 'express';
 
 import { UsersService } from './users.service';
@@ -213,5 +215,51 @@ export class UsersController {
   })
   async getAdminUsageAnalytics() {
     return this.usersService.getAdminUsageAnalytics();
+  }
+
+  @Get('admin/logs')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Get API request logs (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'API request logs returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  async getAdminRequestLogs() {
+    return this.usersService.getAdminRequestLogs();
+  }
+
+  @Get('admin/health')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Get system health (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description:
+      'System health returned successfully.',
+  })
+  @ApiResponse({
+    status: 401,
+    description: 'Authentication required.',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Admin role required.',
+  })
+  async getAdminSystemHealth() {
+    return this.usersService.getAdminSystemHealth();
   }
 }

@@ -348,4 +348,36 @@ export class UsersService {
       },
     });
   }
+
+  async getAdminSystemHealth() {
+    const startedAt = Date.now();
+
+    let databaseStatus = 'UP';
+
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+    } catch {
+      databaseStatus = 'DOWN';
+    }
+
+    const responseTimeMs = Date.now() - startedAt;
+    const memoryUsage = process.memoryUsage();
+
+    return {
+      status: databaseStatus === 'UP' ? 'UP' : 'DEGRADED',
+      timestamp: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      environment: process.env.NODE_ENV ?? 'development',
+      nodeVersion: process.version,
+      database: {
+        status: databaseStatus,
+        responseTimeMs,
+      },
+      memory: {
+        rssBytes: memoryUsage.rss,
+        heapUsedBytes: memoryUsage.heapUsed,
+        heapTotalBytes: memoryUsage.heapTotal,
+      },
+    };
+  }
 }
