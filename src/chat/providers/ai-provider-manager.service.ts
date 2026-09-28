@@ -51,6 +51,10 @@ export class AiProviderManagerService {
     await provider.healthCheck(apiKey);
   }
 
+  isSupported(type: string): boolean {
+    return this.getProvider(type) !== null;
+  }
+
   private getProvider(
     type: string,
   ): AiProvider | null {

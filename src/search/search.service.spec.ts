@@ -111,6 +111,27 @@ describe('SearchService', () => {
     });
   });
 
+  it('refunds quota and returns a sanitized 503 for a Wikipedia timeout', async () => {
+    searchProvider.search.mockRejectedValue(
+      new DOMException('private upstream timeout detail', 'TimeoutError'),
+    );
+    prisma.aPIUsageLog.create.mockRejectedValue(new Error('log write failed'));
+
+    try {
+      await service.search(42, 'NestJS');
+      fail('Expected the Wikipedia timeout to become a controlled API error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as Error).message).not.toContain('private upstream');
+    }
+
+    expect(subscriptionsService.refundRequest).toHaveBeenCalledWith(
+      42,
+      reservation.reservation,
+    );
+    expect(prisma.webSearch.create).not.toHaveBeenCalled();
+  });
+
   it('does not reserve quota for an empty query', async () => {
     await expect(
       service.search(42, '   '),

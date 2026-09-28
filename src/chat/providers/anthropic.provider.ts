@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EXTERNAL_HTTP_TIMEOUT_MS } from '../../config/external-http.constants';
 
 import {
   AiChatRequest,
@@ -28,6 +29,7 @@ export class AnthropicProvider implements AiProvider {
           'x-api-key': request.apiKey,
           'anthropic-version': '2023-06-01',
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
         body: JSON.stringify({
           model: 'claude-3-5-haiku-latest',
           max_tokens: 1000,
@@ -37,11 +39,7 @@ export class AnthropicProvider implements AiProvider {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `Anthropic API request failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('Anthropic API request failed');
     }
 
     const data = (await response.json()) as {
@@ -75,15 +73,12 @@ export class AnthropicProvider implements AiProvider {
           'x-api-key': apiKey,
           'anthropic-version': '2023-06-01',
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
       },
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `Anthropic health check failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('Anthropic health check failed');
     }
   }
 }

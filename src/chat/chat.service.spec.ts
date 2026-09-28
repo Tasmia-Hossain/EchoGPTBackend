@@ -1,3 +1,9 @@
+import {
+  BadRequestException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -9,6 +15,7 @@ import { ChatService } from './chat.service';
 describe('ChatService', () => {
   let service: ChatService;
   let prisma: any;
+  let tx: any;
   let subscriptionsService: any;
   let cryptoService: any;
   let aiProviderManager: any;
@@ -35,34 +42,38 @@ describe('ChatService', () => {
   };
 
   beforeEach(async () => {
+    tx = {
+      chatConversation: {
+        create: jest.fn().mockResolvedValue({ id: 11 }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      chatMessage: {
+        createMany: jest.fn().mockResolvedValue({ count: 2 }),
+      },
+    };
+
     prisma = {
       aIProvider: {
         findFirst: jest.fn().mockResolvedValue(provider),
         findUnique: jest.fn(),
       },
       chatConversation: {
-        create: jest.fn().mockResolvedValue({
-          id: 11,
-          userId: 42,
-          providerId: 5,
-        }),
         findFirst: jest.fn(),
         findMany: jest.fn(),
         delete: jest.fn(),
       },
       chatMessage: {
         findMany: jest.fn().mockResolvedValue([]),
-        createMany: jest.fn().mockResolvedValue({ count: 2 }),
       },
       aPIUsageLog: {
         create: jest.fn().mockResolvedValue({ id: 21 }),
       },
+      $transaction: jest.fn(async (operation: (transaction: any) => unknown) =>
+        operation(tx),
+      ),
     };
 
     subscriptionsService = {
-      checkRequestAvailability: jest.fn().mockResolvedValue({
-        remainingRequests: 100,
-      }),
       reserveRequest: jest.fn().mockResolvedValue(reservation),
       refundRequest: jest.fn().mockResolvedValue(undefined),
     };
@@ -72,6 +83,7 @@ describe('ChatService', () => {
     };
 
     aiProviderManager = {
+      isSupported: jest.fn().mockReturnValue(true),
       chat: jest.fn().mockResolvedValue({
         content: 'AI response',
       }),
@@ -90,17 +102,11 @@ describe('ChatService', () => {
     service = module.get<ChatService>(ChatService);
   });
 
-  it('reserves exactly one request after a successful AI response', async () => {
-    const result = await service.sendMessage(
-      42,
-      '  Hello AI  ',
-    );
+  it('creates a conversation and persists both messages after successful AI response', async () => {
+    const result = await service.sendMessage(42, '  Hello AI  ');
 
-    expect(subscriptionsService.checkRequestAvailability).toHaveBeenCalledWith(42);
     expect(subscriptionsService.reserveRequest).toHaveBeenCalledTimes(1);
     expect(subscriptionsService.refundRequest).not.toHaveBeenCalled();
-    expect(subscriptionsService.consumeRequest).toBeUndefined();
-
     expect(aiProviderManager.chat).toHaveBeenCalledWith(
       'OPENAI',
       expect.objectContaining({
@@ -109,8 +115,15 @@ describe('ChatService', () => {
         conversation: [],
       }),
     );
-
-    expect(prisma.chatMessage.createMany).toHaveBeenCalledWith({
+    expect(tx.chatConversation.create).toHaveBeenCalledWith({
+      data: {
+        userId: 42,
+        providerId: 5,
+        title: 'Hello AI',
+        updatedAt: expect.any(Date),
+      },
+    });
+    expect(tx.chatMessage.createMany).toHaveBeenCalledWith({
       data: [
         {
           conversationId: 11,
@@ -124,7 +137,9 @@ describe('ChatService', () => {
         },
       ],
     });
-
+    expect(prisma.$transaction.mock.invocationCallOrder[0]).toBeGreaterThan(
+      aiProviderManager.chat.mock.invocationCallOrder[0],
+    );
     expect(result).toEqual({
       conversationId: 11,
       provider: {
@@ -137,20 +152,67 @@ describe('ChatService', () => {
     });
   });
 
-  it('refunds the reservation when the AI provider call fails', async () => {
-    const providerError = new Error('provider unavailable');
-    aiProviderManager.chat.mockRejectedValue(providerError);
+  it('does not create a conversation or reserve quota when the provider key is missing', async () => {
+    prisma.aIProvider.findFirst.mockResolvedValue({
+      ...provider,
+      apiKeyEncrypted: null,
+    });
 
-    await expect(
-      service.sendMessage(42, 'Hello AI'),
-    ).rejects.toBe(providerError);
+    await expect(service.sendMessage(42, 'Hello AI')).rejects.toThrow(
+      BadRequestException,
+    );
 
-    expect(subscriptionsService.reserveRequest).toHaveBeenCalledTimes(1);
+    expect(subscriptionsService.reserveRequest).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(aiProviderManager.chat).not.toHaveBeenCalled();
+  });
+
+  it('does not create a conversation when provider-key decryption fails', async () => {
+    cryptoService.decrypt.mockImplementation(() => {
+      throw new Error('private key detail');
+    });
+
+    await expect(service.sendMessage(42, 'Hello AI')).rejects.toThrow(
+      'AI provider API key is unavailable',
+    );
+
+    expect(subscriptionsService.reserveRequest).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('does not create a conversation when quota reservation is rejected', async () => {
+    subscriptionsService.reserveRequest.mockRejectedValue(
+      new BadRequestException('Monthly request limit exceeded'),
+    );
+
+    await expect(service.sendMessage(42, 'Hello AI')).rejects.toThrow(
+      BadRequestException,
+    );
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(aiProviderManager.chat).not.toHaveBeenCalled();
+  });
+
+  it('refunds quota and leaves no new conversation when the provider fails', async () => {
+    aiProviderManager.chat.mockRejectedValue(
+      new Error('raw upstream error with confidential detail'),
+    );
+
+    try {
+      await service.sendMessage(42, 'Hello AI');
+      fail('Expected the provider failure to be converted to an API error');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as Error).message).not.toContain('confidential detail');
+    }
+
     expect(subscriptionsService.refundRequest).toHaveBeenCalledWith(
       42,
       reservation.reservation,
     );
-    expect(prisma.chatMessage.createMany).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(tx.chatConversation.create).not.toHaveBeenCalled();
+    expect(tx.chatMessage.createMany).not.toHaveBeenCalled();
     expect(prisma.aPIUsageLog.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         userId: 42,
@@ -160,10 +222,96 @@ describe('ChatService', () => {
     });
   });
 
+  it('maps provider timeouts to a controlled sanitized API error', async () => {
+    aiProviderManager.chat.mockRejectedValue(
+      new DOMException('private endpoint and key detail', 'TimeoutError'),
+    );
+
+    try {
+      await service.sendMessage(42, 'Hello AI');
+      fail('Expected the provider timeout to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      expect((error as Error).message).not.toContain('private endpoint');
+    }
+
+    expect(subscriptionsService.refundRequest).toHaveBeenCalledWith(
+      42,
+      reservation.reservation,
+    );
+    expect(tx.chatConversation.create).not.toHaveBeenCalled();
+  });
+
+  it('continues an owned conversation and updates its activity timestamp', async () => {
+    prisma.chatConversation.findFirst.mockResolvedValue({
+      id: 88,
+      userId: 42,
+      providerId: 5,
+    });
+    prisma.chatMessage.findMany.mockResolvedValue([
+      { role: 'user', content: 'Earlier question' },
+      { role: 'assistant', content: 'Earlier answer' },
+    ]);
+
+    const result = await service.sendMessage(42, 'Follow-up', undefined, 88);
+
+    expect(prisma.chatConversation.findFirst).toHaveBeenCalledWith({
+      where: { id: 88, userId: 42 },
+    });
+    expect(aiProviderManager.chat).toHaveBeenCalledWith(
+      'OPENAI',
+      expect.objectContaining({
+        conversation: [
+          { role: 'user', content: 'Earlier question' },
+          { role: 'assistant', content: 'Earlier answer' },
+        ],
+      }),
+    );
+    expect(tx.chatConversation.updateMany).toHaveBeenCalledWith({
+      where: { id: 88, userId: 42 },
+      data: { updatedAt: expect.any(Date) },
+    });
+    expect(tx.chatConversation.create).not.toHaveBeenCalled();
+    expect(tx.chatMessage.createMany).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ conversationId: 88, role: 'user' }),
+        expect.objectContaining({ conversationId: 88, role: 'assistant' }),
+      ]),
+    });
+    expect(result.conversationId).toBe(88);
+  });
+
+  it('does not refund quota when persistence fails after provider success', async () => {
+    tx.chatMessage.createMany.mockRejectedValue(
+      new Error('database detail'),
+    );
+
+    await expect(service.sendMessage(42, 'Hello AI')).rejects.toThrow(
+      InternalServerErrorException,
+    );
+
+    expect(subscriptionsService.refundRequest).not.toHaveBeenCalled();
+    expect(prisma.aPIUsageLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ statusCode: 500 }),
+    });
+  });
+
+  it('does not fail a successful persisted chat if its non-critical usage log fails', async () => {
+    prisma.aPIUsageLog.create.mockRejectedValue(new Error('log database error'));
+
+    await expect(service.sendMessage(42, 'Hello AI')).resolves.toMatchObject({
+      conversationId: 11,
+      message: 'AI response',
+    });
+
+    expect(subscriptionsService.refundRequest).not.toHaveBeenCalled();
+    expect(tx.chatMessage.createMany).toHaveBeenCalledTimes(1);
+  });
+
   it('does not reserve quota for an empty prompt', async () => {
-    await expect(
-      service.sendMessage(42, '   '),
-    ).rejects.toThrow();
+    await expect(service.sendMessage(42, '   ')).rejects.toThrow(
+      BadRequestException,
+    );
 
     expect(subscriptionsService.reserveRequest).not.toHaveBeenCalled();
     expect(aiProviderManager.chat).not.toHaveBeenCalled();
@@ -174,7 +322,7 @@ describe('ChatService', () => {
 
     await expect(
       service.sendMessage(42, 'Hello AI', undefined, 999),
-    ).rejects.toThrow();
+    ).rejects.toThrow(NotFoundException);
 
     expect(subscriptionsService.reserveRequest).not.toHaveBeenCalled();
     expect(aiProviderManager.chat).not.toHaveBeenCalled();

@@ -48,6 +48,8 @@ Required variables:
 
 `NODE_ENV` is optional and can be `development`, `test`, or `production`. The provider API key variables in `.env.example` are optional; provider keys can be configured through the admin provider API.
 
+Outbound AI-provider and Wikipedia requests have a fixed 30-second timeout (`EXTERNAL_HTTP_TIMEOUT_MS` in `src/config/external-http.constants.ts`). Provider errors and timeout details are returned to clients as generic service-unavailable responses.
+
 `CORS_ORIGINS` accepts multiple origins separated by commas. Entries are trimmed and empty entries are ignored. Configure only trusted frontend or browser-extension origins in production. For a Chrome extension, use its actual origin in the form `chrome-extension://<extension-id>`; obtain the ID from the installed or unpacked extension rather than assuming a production ID. Swagger is served from the API origin at `/api/docs`, so same-origin access does not require another CORS entry.
 
 Generate suitable local secret values with Node.js:

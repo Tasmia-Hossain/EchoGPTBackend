@@ -3,6 +3,7 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,11 +33,25 @@ export class ChatService {
       throw new BadRequestException('Prompt cannot be empty');
     }
 
-    await this.subscriptionsService.checkRequestAvailability(userId);
-
     const provider = await this.getProvider(providerId);
+    if (!this.aiProviderManager.isSupported(provider.type)) {
+      throw new BadRequestException('Selected AI provider is not supported');
+    }
 
-    let conversation;
+    let apiKey: string | null;
+    try {
+      apiKey = provider.apiKeyEncrypted
+        ? this.cryptoService.decrypt(provider.apiKeyEncrypted)
+        : null;
+    } catch {
+      throw new BadRequestException('AI provider API key is unavailable');
+    }
+
+    if (!apiKey) {
+      throw new BadRequestException('AI provider API key is not configured');
+    }
+
+    let conversation: { id: number } | null = null;
 
     if (conversationId !== undefined) {
       conversation = await this.prisma.chatConversation.findFirst({
@@ -49,38 +64,22 @@ export class ChatService {
       if (!conversation) {
         throw new NotFoundException('Conversation not found');
       }
-    } else {
-      conversation = await this.prisma.chatConversation.create({
-        data: {
-          userId,
-          providerId: provider.id,
-          title: trimmedPrompt.slice(0, 100),
-        },
-      });
     }
 
-    const apiKey = provider.apiKeyEncrypted
-      ? this.cryptoService.decrypt(provider.apiKeyEncrypted)
-      : null;
-
-    if (!apiKey) {
-      throw new BadRequestException(
-        'AI provider API key is not configured',
-      );
-    }
-
-    const previousMessages = await this.prisma.chatMessage.findMany({
-      where: {
-        conversationId: conversation.id,
-      },
-      orderBy: {
-        createdAt: 'asc',
-      },
-      select: {
-        role: true,
-        content: true,
-      },
-    });
+    const previousMessages = conversation
+      ? await this.prisma.chatMessage.findMany({
+          where: {
+            conversationId: conversation.id,
+          },
+          orderBy: {
+            createdAt: 'asc',
+          },
+          select: {
+            role: true,
+            content: true,
+          },
+        })
+      : [];
 
     const conversationHistory = previousMessages.filter(
       (
@@ -92,11 +91,10 @@ export class ChatService {
         message.role === 'user' || message.role === 'assistant',
     );
 
-    const reservation =
-      await this.subscriptionsService.reserveRequest(userId);
+    const reservation = await this.subscriptionsService.reserveRequest(userId);
 
     const startedAt = Date.now();
-    let aiResponse;
+    let aiResponse: { content: string };
 
     try {
       aiResponse = await this.aiProviderManager.chat(provider.type, {
@@ -104,7 +102,7 @@ export class ChatService {
         prompt: trimmedPrompt,
         conversation: conversationHistory,
       });
-    } catch (error) {
+    } catch {
       const responseTime = Date.now() - startedAt;
 
       try {
@@ -118,50 +116,103 @@ export class ChatService {
         );
       }
 
-      await this.prisma.aPIUsageLog.create({
-        data: {
-          userId,
-          endpoint: '/chat',
-          method: 'POST',
-          provider: provider.type,
-          statusCode: 502,
-          responseTime,
-        },
-      });
-
-      throw error;
-    }
-
-    const responseTime = Date.now() - startedAt;
-
-    await this.prisma.aPIUsageLog.create({
-      data: {
+      await this.tryWriteUsageLog({
         userId,
         endpoint: '/chat',
         method: 'POST',
         provider: provider.type,
-        statusCode: 200,
+        statusCode: 502,
         responseTime,
-      },
-    });
+      });
 
-    await this.prisma.chatMessage.createMany({
-      data: [
-        {
-          conversationId: conversation.id,
-          role: 'user',
-          content: trimmedPrompt,
-        },
-        {
-          conversationId: conversation.id,
-          role: 'assistant',
-          content: aiResponse.content,
-        },
-      ],
+      throw new ServiceUnavailableException(
+        'AI provider is currently unavailable. Please try again later.',
+      );
+    }
+
+    const responseTime = Date.now() - startedAt;
+    const completedAt = new Date();
+    let persistedConversationId: number;
+
+    try {
+      persistedConversationId = await this.prisma.$transaction(async (tx) => {
+        let targetConversationId = conversation?.id;
+
+        if (targetConversationId === undefined) {
+          const createdConversation = await tx.chatConversation.create({
+            data: {
+              userId,
+              providerId: provider.id,
+              title: trimmedPrompt.slice(0, 100),
+              updatedAt: completedAt,
+            },
+          });
+          targetConversationId = createdConversation.id;
+        } else {
+          const updatedConversation = await tx.chatConversation.updateMany({
+            where: {
+              id: targetConversationId,
+              userId,
+            },
+            data: {
+              updatedAt: completedAt,
+            },
+          });
+
+          if (updatedConversation.count !== 1) {
+            throw new NotFoundException('Conversation not found');
+          }
+        }
+
+        await tx.chatMessage.createMany({
+          data: [
+            {
+              conversationId: targetConversationId,
+              role: 'user',
+              content: trimmedPrompt,
+            },
+            {
+              conversationId: targetConversationId,
+              role: 'assistant',
+              content: aiResponse.content,
+            },
+          ],
+        });
+
+        return targetConversationId;
+      });
+    } catch (error) {
+      await this.tryWriteUsageLog({
+        userId,
+        endpoint: '/chat',
+        method: 'POST',
+        provider: provider.type,
+        statusCode: 500,
+        responseTime,
+      });
+
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+
+      // The external provider succeeded, so its reserved quota remains consumed.
+      throw new InternalServerErrorException(
+        'AI response was generated but could not be saved. Request usage was retained.',
+      );
+    }
+
+    // Usage logs are best-effort after the response and messages are safely persisted.
+    await this.tryWriteUsageLog({
+      userId,
+      endpoint: '/chat',
+      method: 'POST',
+      provider: provider.type,
+      statusCode: 200,
+      responseTime,
     });
 
     return {
-      conversationId: conversation.id,
+      conversationId: persistedConversationId,
       provider: {
         id: provider.id,
         name: provider.name,
@@ -170,6 +221,21 @@ export class ChatService {
       message: aiResponse.content,
       usage: reservation.usage,
     };
+  }
+
+  private async tryWriteUsageLog(data: {
+    userId: number;
+    endpoint: string;
+    method: string;
+    provider: string;
+    statusCode: number;
+    responseTime: number;
+  }): Promise<void> {
+    try {
+      await this.prisma.aPIUsageLog.create({ data });
+    } catch {
+      // Logging must not mask provider failures or undo completed chat work.
+    }
   }
 
   async getConversations(userId: number) {

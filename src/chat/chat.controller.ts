@@ -62,6 +62,16 @@ export class ChatController {
     description:
       'Selected provider or conversation not found.',
   })
+  @ApiResponse({
+    status: 503,
+    description:
+      'AI provider failed or timed out. Upstream response details are not returned.',
+  })
+  @ApiResponse({
+    status: 500,
+    description:
+      'The provider completed but the response could not be persisted. Reserved quota is retained.',
+  })
   async sendMessage(
     @Req() request: AuthenticatedRequest,
     @Body() sendMessageDto: SendMessageDto,

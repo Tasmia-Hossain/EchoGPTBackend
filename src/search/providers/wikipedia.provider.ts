@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EXTERNAL_HTTP_TIMEOUT_MS } from '../../config/external-http.constants';
 import { SearchProvider, SearchResult } from './search-provider.interface';
 
 interface WikipediaSearchResult {
@@ -30,12 +31,11 @@ export class WikipediaProvider implements SearchProvider {
         Accept: 'application/json',
         'User-Agent': 'EchoGPTBackend/1.0',
       },
+      signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
     });
 
     if (!response.ok) {
-      throw new Error(
-        `Wikipedia API request failed: ${response.status} ${response.statusText}`,
-      );
+      throw new Error('Wikipedia search request failed');
     }
 
     const data = (await response.json()) as WikipediaResponse;

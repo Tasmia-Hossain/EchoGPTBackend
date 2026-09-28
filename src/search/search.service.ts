@@ -49,16 +49,20 @@ export class SearchService {
         );
       }
 
-      await this.prisma.aPIUsageLog.create({
-        data: {
-          userId,
-          endpoint: '/search',
-          method: 'POST',
-          provider: 'WIKIPEDIA',
-          statusCode: 502,
-          responseTime,
-        },
-      });
+      try {
+        await this.prisma.aPIUsageLog.create({
+          data: {
+            userId,
+            endpoint: '/search',
+            method: 'POST',
+            provider: 'WIKIPEDIA',
+            statusCode: 502,
+            responseTime,
+          },
+        });
+      } catch {
+        // A logging failure must not mask the controlled search-provider error.
+      }
 
       throw new ServiceUnavailableException(
         'Search provider is currently unavailable',

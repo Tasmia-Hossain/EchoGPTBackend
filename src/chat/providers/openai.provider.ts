@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EXTERNAL_HTTP_TIMEOUT_MS } from '../../config/external-http.constants';
 
 import {
   AiChatRequest,
@@ -27,6 +28,7 @@ export class OpenAiProvider implements AiProvider {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${request.apiKey}`,
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages,
@@ -36,11 +38,7 @@ export class OpenAiProvider implements AiProvider {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `OpenAI API request failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('OpenAI API request failed');
     }
 
     const data = (await response.json()) as {
@@ -73,15 +71,12 @@ export class OpenAiProvider implements AiProvider {
         headers: {
           Authorization: `Bearer ${apiKey}`,
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
       },
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `OpenAI health check failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('OpenAI health check failed');
     }
   }
 }

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EXTERNAL_HTTP_TIMEOUT_MS } from '../../config/external-http.constants';
 
 import {
   AiChatRequest,
@@ -37,6 +38,7 @@ export class GeminiProvider implements AiProvider {
           'Content-Type': 'application/json',
           'x-goog-api-key': request.apiKey,
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
         body: JSON.stringify({
           contents,
           generationConfig: {
@@ -47,11 +49,7 @@ export class GeminiProvider implements AiProvider {
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `Gemini API request failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('Gemini API request failed');
     }
 
     const data = (await response.json()) as {
@@ -86,15 +84,12 @@ export class GeminiProvider implements AiProvider {
         headers: {
           'x-goog-api-key': apiKey,
         },
+        signal: AbortSignal.timeout(EXTERNAL_HTTP_TIMEOUT_MS),
       },
     );
 
     if (!response.ok) {
-      const errorText = await response.text();
-
-      throw new Error(
-        `Gemini health check failed: ${response.status} ${errorText}`,
-      );
+      throw new Error('Gemini health check failed');
     }
   }
 }

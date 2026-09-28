@@ -58,7 +58,7 @@ export class SearchController {
   @ApiResponse({
     status: 503,
     description:
-      'Search provider is unavailable.',
+      'Search provider is unavailable or timed out. Upstream response details are not returned.',
   })
   async search(
     @Req() request: AuthenticatedRequest,
