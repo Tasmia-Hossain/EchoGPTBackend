@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
 
@@ -25,46 +26,41 @@ export class ChatService {
     providerId?: number,
     conversationId?: number,
   ) {
-    if (!prompt.trim()) {
-      throw new BadRequestException(
-        'Prompt cannot be empty',
-      );
+    const trimmedPrompt = prompt.trim();
+
+    if (!trimmedPrompt) {
+      throw new BadRequestException('Prompt cannot be empty');
     }
 
-    const provider =
-      await this.getProvider(providerId);
+    await this.subscriptionsService.checkRequestAvailability(userId);
+
+    const provider = await this.getProvider(providerId);
 
     let conversation;
 
     if (conversationId !== undefined) {
-      conversation =
-        await this.prisma.chatConversation.findFirst({
-          where: {
-            id: conversationId,
-            userId,
-          },
-        });
+      conversation = await this.prisma.chatConversation.findFirst({
+        where: {
+          id: conversationId,
+          userId,
+        },
+      });
 
       if (!conversation) {
-        throw new NotFoundException(
-          'Conversation not found',
-        );
+        throw new NotFoundException('Conversation not found');
       }
     } else {
-      conversation =
-        await this.prisma.chatConversation.create({
-          data: {
-            userId,
-            providerId: provider.id,
-            title: prompt.trim().slice(0, 100),
-          },
-        });
+      conversation = await this.prisma.chatConversation.create({
+        data: {
+          userId,
+          providerId: provider.id,
+          title: trimmedPrompt.slice(0, 100),
+        },
+      });
     }
 
     const apiKey = provider.apiKeyEncrypted
-      ? this.cryptoService.decrypt(
-          provider.apiKeyEncrypted,
-        )
+      ? this.cryptoService.decrypt(provider.apiKeyEncrypted)
       : null;
 
     if (!apiKey) {
@@ -73,48 +69,54 @@ export class ChatService {
       );
     }
 
-    const previousMessages =
-      await this.prisma.chatMessage.findMany({
-        where: {
-          conversationId: conversation.id,
-        },
-        orderBy: {
-          createdAt: 'asc',
-        },
-        select: {
-          role: true,
-          content: true,
-        },
-      });
+    const previousMessages = await this.prisma.chatMessage.findMany({
+      where: {
+        conversationId: conversation.id,
+      },
+      orderBy: {
+        createdAt: 'asc',
+      },
+      select: {
+        role: true,
+        content: true,
+      },
+    });
 
-    const conversationHistory =
-      previousMessages.filter(
-        (
-          message,
-        ): message is {
-          role: 'user' | 'assistant';
-          content: string;
-        } =>
-          message.role === 'user' ||
-          message.role === 'assistant',
-      );
+    const conversationHistory = previousMessages.filter(
+      (
+        message,
+      ): message is {
+        role: 'user' | 'assistant';
+        content: string;
+      } =>
+        message.role === 'user' || message.role === 'assistant',
+    );
+
+    const reservation =
+      await this.subscriptionsService.reserveRequest(userId);
 
     const startedAt = Date.now();
-
     let aiResponse;
 
     try {
-      aiResponse =
-        await this.aiProviderManager.chat(
-          provider.type,
-          {
-            apiKey,
-            prompt: prompt.trim(),
-            conversation: conversationHistory,
-          },
-        );
+      aiResponse = await this.aiProviderManager.chat(provider.type, {
+        apiKey,
+        prompt: trimmedPrompt,
+        conversation: conversationHistory,
+      });
     } catch (error) {
       const responseTime = Date.now() - startedAt;
+
+      try {
+        await this.subscriptionsService.refundRequest(
+          userId,
+          reservation.reservation,
+        );
+      } catch {
+        throw new InternalServerErrorException(
+          'Unable to restore request quota after AI provider failure',
+        );
+      }
 
       await this.prisma.aPIUsageLog.create({
         data: {
@@ -148,7 +150,7 @@ export class ChatService {
         {
           conversationId: conversation.id,
           role: 'user',
-          content: prompt.trim(),
+          content: trimmedPrompt,
         },
         {
           conversationId: conversation.id,
@@ -158,11 +160,6 @@ export class ChatService {
       ],
     });
 
-    const usage =
-      await this.subscriptionsService.consumeRequest(
-        userId,
-      );
-
     return {
       conversationId: conversation.id,
       provider: {
@@ -171,7 +168,7 @@ export class ChatService {
         type: provider.type,
       },
       message: aiResponse.content,
-      usage,
+      usage: reservation.usage,
     };
   }
 
@@ -197,38 +194,35 @@ export class ChatService {
     userId: number,
     conversationId: number,
   ) {
-    const conversation =
-      await this.prisma.chatConversation.findFirst({
-        where: {
-          id: conversationId,
-          userId,
-        },
-        include: {
-          provider: {
-            select: {
-              id: true,
-              name: true,
-              type: true,
-            },
-          },
-          messages: {
-            orderBy: {
-              createdAt: 'asc',
-            },
-            select: {
-              id: true,
-              role: true,
-              content: true,
-              createdAt: true,
-            },
+    const conversation = await this.prisma.chatConversation.findFirst({
+      where: {
+        id: conversationId,
+        userId,
+      },
+      include: {
+        provider: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
           },
         },
-      });
+        messages: {
+          orderBy: {
+            createdAt: 'asc',
+          },
+          select: {
+            id: true,
+            role: true,
+            content: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
 
     if (!conversation) {
-      throw new NotFoundException(
-        'Conversation not found',
-      );
+      throw new NotFoundException('Conversation not found');
     }
 
     return conversation;
@@ -238,18 +232,15 @@ export class ChatService {
     userId: number,
     conversationId: number,
   ) {
-    const conversation =
-      await this.prisma.chatConversation.findFirst({
-        where: {
-          id: conversationId,
-          userId,
-        },
-      });
+    const conversation = await this.prisma.chatConversation.findFirst({
+      where: {
+        id: conversationId,
+        userId,
+      },
+    });
 
     if (!conversation) {
-      throw new NotFoundException(
-        'Conversation not found',
-      );
+      throw new NotFoundException('Conversation not found');
     }
 
     await this.prisma.chatConversation.delete({
@@ -265,12 +256,11 @@ export class ChatService {
 
   private async getProvider(providerId?: number) {
     if (providerId !== undefined) {
-      const provider =
-        await this.prisma.aIProvider.findUnique({
-          where: {
-            id: providerId,
-          },
-        });
+      const provider = await this.prisma.aIProvider.findUnique({
+        where: {
+          id: providerId,
+        },
+      });
 
       if (!provider || !provider.isEnabled) {
         throw new NotFoundException(
@@ -281,16 +271,15 @@ export class ChatService {
       return provider;
     }
 
-    const provider =
-      await this.prisma.aIProvider.findFirst({
-        where: {
-          isEnabled: true,
-          isDefault: true,
-        },
-        orderBy: {
-          createdAt: 'desc',
-        },
-      });
+    const provider = await this.prisma.aIProvider.findFirst({
+      where: {
+        isEnabled: true,
+        isDefault: true,
+      },
+      orderBy: {
+        createdAt: 'desc',
+      },
+    });
 
     if (!provider) {
       throw new NotFoundException(

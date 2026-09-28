@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  InternalServerErrorException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 
@@ -21,17 +22,32 @@ export class SearchService {
     const trimmedQuery = query.trim();
 
     if (!trimmedQuery) {
-      throw new BadRequestException('Search query cannot be empty');
+      throw new BadRequestException(
+        'Search query cannot be empty',
+      );
     }
 
-    const startedAt = Date.now();
+    const reservation =
+      await this.subscriptionsService.reserveRequest(userId);
 
+    const startedAt = Date.now();
     let results;
 
     try {
       results = await this.searchProvider.search(trimmedQuery);
-    } catch (error) {
+    } catch {
       const responseTime = Date.now() - startedAt;
+
+      try {
+        await this.subscriptionsService.refundRequest(
+          userId,
+          reservation.reservation,
+        );
+      } catch {
+        throw new InternalServerErrorException(
+          'Unable to restore request quota after search provider failure',
+        );
+      }
 
       await this.prisma.aPIUsageLog.create({
         data: {
@@ -71,14 +87,12 @@ export class SearchService {
       },
     });
 
-    const usage = await this.subscriptionsService.consumeRequest(userId);
-
     return {
       query: trimmedQuery,
       provider: 'WIKIPEDIA',
       resultCount: results.length,
       results,
-      usage,
+      usage: reservation.usage,
     };
   }
 
