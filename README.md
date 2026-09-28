@@ -64,12 +64,14 @@ Create the PostgreSQL database, configure `DATABASE_URL`, and apply migrations:
     npx prisma migrate deploy
     npx prisma generate
 
-Seed roles and the development admin account:
+Configure `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in your local `.env` before seeding. Use an email address for the admin account and a unique password of at least 16 characters. These variables are required only by the seed script, not by normal application startup. Never commit your `.env` file.
+
+Seed roles and the admin account:
 
     npm run build
     node dist/scripts/seed.js
 
-The seed script creates `admin@echogpt.dev` with the password `Admin123!Change`. Change or replace these development credentials before using the application in a shared or production environment.
+The seed script creates or updates the admin password from `SEED_ADMIN_PASSWORD`, assigns the `ADMIN` role, and creates a Premium subscription if the admin has no subscription. It does not print the password. Running it again is safe; the configured password is applied to the seeded admin account each time.
 
 ## Run the application
 
