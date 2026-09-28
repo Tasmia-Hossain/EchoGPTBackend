@@ -11,6 +11,8 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 import { AiProviderCryptoService } from '../ai-providers/crypto/ai-provider-crypto.service';
 
 import { AiProviderManagerService } from './providers/ai-provider-manager.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { paginationSkip, toPaginatedResponse } from '../common/pagination';
 
 @Injectable()
 export class ChatService {
@@ -238,22 +240,31 @@ export class ChatService {
     }
   }
 
-  async getConversations(userId: number) {
-    return this.prisma.chatConversation.findMany({
-      where: {
-        userId,
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      select: {
-        id: true,
-        title: true,
-        providerId: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+  async getConversations(userId: number, pagination: PaginationQueryDto) {
+    const where = { userId };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.chatConversation.findMany({
+        where,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+        skip: paginationSkip(pagination.page, pagination.limit),
+        take: pagination.limit,
+        select: {
+          id: true,
+          title: true,
+          providerId: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+      this.prisma.chatConversation.count({ where }),
+    ]);
+
+    return toPaginatedResponse(
+      data,
+      pagination.page,
+      pagination.limit,
+      total,
+    );
   }
 
   async getConversation(

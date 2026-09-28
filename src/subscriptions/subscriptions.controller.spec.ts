@@ -37,7 +37,10 @@ describe('SubscriptionsController admin routes', () => {
 
   beforeAll(async () => {
     subscriptionsService = {
-      getAllSubscriptions: jest.fn().mockResolvedValue([]),
+      getAllSubscriptions: jest.fn().mockResolvedValue({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      }),
       getAdminSubscriptionForUser: jest.fn().mockResolvedValue({ id: 7 }),
       updateUserPlan: jest.fn().mockResolvedValue({ id: 7, plan: 'PREMIUM' }),
       updateUserStatus: jest.fn().mockResolvedValue({ id: 7, status: 'INACTIVE' }),
@@ -107,7 +110,24 @@ describe('SubscriptionsController admin routes', () => {
       .get('/subscriptions/admin')
       .set('Authorization', `Bearer ${token}`)
       .expect(200)
-      .expect([]);
+      .expect({
+        data: [],
+        meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+
+    await request(app.getHttpServer())
+      .get('/subscriptions/admin?page=2&limit=5')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(subscriptionsService.getAllSubscriptions).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ page: 1, limit: 20 }),
+    );
+    expect(subscriptionsService.getAllSubscriptions).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ page: 2, limit: 5 }),
+    );
 
     await request(app.getHttpServer())
       .get('/subscriptions/admin/users/42')
@@ -156,6 +176,15 @@ describe('SubscriptionsController admin routes', () => {
 
     expect(subscriptionsService.updateUserPlan).not.toHaveBeenCalled();
     expect(subscriptionsService.updateUserStatus).not.toHaveBeenCalled();
+  });
+
+  it('rejects invalid pagination query values', async () => {
+    const token = await bearerToken(1);
+
+    await request(app.getHttpServer())
+      .get('/subscriptions/admin?page=0&limit=101')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(400);
   });
 
   it('rejects invalid user IDs and returns 404 for a missing subscription', async () => {

@@ -20,6 +20,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 import { SearchDto } from './dto/search.dto';
 import { SearchService } from './search.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 
 interface AuthenticatedRequest extends Request {
   user: {
@@ -75,21 +77,29 @@ export class SearchController {
   @Get('history')
   @ApiOperation({
     summary: 'Get current user search history',
+    description:
+      'Returns only the authenticated user’s searches, newest first.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1, maximum: 2147483647, description: 'One-based page; defaults to 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, minimum: 1, maximum: 100, description: 'Page size; defaults to 20.' })
   @ApiResponse({
     status: 200,
     description:
-      'Search history returned successfully.',
+      'Paginated search history with page metadata.',
+    type: PaginatedResponseDto,
   })
+  @ApiResponse({ status: 400, description: 'Page or limit is invalid.' })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
   })
   async getHistory(
     @Req() request: AuthenticatedRequest,
+    @Query() pagination: PaginationQueryDto,
   ) {
     return this.searchService.getHistory(
       request.user.userId,
+      pagination,
     );
   }
 

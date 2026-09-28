@@ -7,6 +7,8 @@ import {
 import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { paginationSkip, toPaginatedResponse } from '../common/pagination';
 
 function isPrismaUniqueConstraintError(
   error: unknown,
@@ -220,46 +222,48 @@ export class UsersService {
     };
   }
 
-  async getAllUsers() {
-    return this.prisma.user.findMany({
-      where: {
-        deletedAt: null,
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isEmailVerified: true,
-        createdAt: true,
-        updatedAt: true,
-        userRoles: {
-          select: {
-            role: {
-              select: {
-                name: true,
+  async getAllUsers(pagination: PaginationQueryDto) {
+    const where = { deletedAt: null };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.user.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: paginationSkip(pagination.page, pagination.limit),
+        take: pagination.limit,
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isEmailVerified: true,
+          createdAt: true,
+          updatedAt: true,
+          userRoles: {
+            select: {
+              role: {
+                select: {
+                  name: true,
+                },
               },
             },
           },
-        },
-        subscriptions: {
-          orderBy: {
-            createdAt: 'desc',
-          },
-          take: 1,
-          select: {
-            plan: true,
-            status: true,
-            usedRequests: true,
-            requestLimit: true,
-            currentPeriodStart: true,
-            currentPeriodEnd: true,
+          subscriptions: {
+            orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+            take: 1,
+            select: {
+              plan: true,
+              status: true,
+              usedRequests: true,
+              requestLimit: true,
+              currentPeriodStart: true,
+              currentPeriodEnd: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return toPaginatedResponse(data, pagination.page, pagination.limit, total);
   }
 
   async getAdminDashboardStats() {
@@ -369,30 +373,34 @@ export class UsersService {
     };
   }
 
-  async getAdminRequestLogs() {
-    return this.prisma.aPIUsageLog.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-      take: 100,
-      select: {
-        id: true,
-        endpoint: true,
-        method: true,
-        provider: true,
-        statusCode: true,
-        responseTime: true,
-        tokensUsed: true,
-        createdAt: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
+  async getAdminRequestLogs(pagination: PaginationQueryDto) {
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.aPIUsageLog.findMany({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: paginationSkip(pagination.page, pagination.limit),
+        take: pagination.limit,
+        select: {
+          id: true,
+          endpoint: true,
+          method: true,
+          provider: true,
+          statusCode: true,
+          responseTime: true,
+          tokensUsed: true,
+          createdAt: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.aPIUsageLog.count(),
+    ]);
+
+    return toPaginatedResponse(data, pagination.page, pagination.limit, total);
   }
 
   async getAdminSystemHealth() {

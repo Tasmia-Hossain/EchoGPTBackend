@@ -60,6 +60,7 @@ describe('ChatService', () => {
       chatConversation: {
         findFirst: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         delete: jest.fn(),
       },
       chatMessage: {
@@ -68,8 +69,8 @@ describe('ChatService', () => {
       aPIUsageLog: {
         create: jest.fn().mockResolvedValue({ id: 21 }),
       },
-      $transaction: jest.fn(async (operation: (transaction: any) => unknown) =>
-        operation(tx),
+      $transaction: jest.fn((operation: any) =>
+        Array.isArray(operation) ? Promise.all(operation) : operation(tx),
       ),
     };
 
@@ -279,6 +280,38 @@ describe('ChatService', () => {
       ]),
     });
     expect(result.conversationId).toBe(88);
+  });
+
+  it('paginates only the authenticated user’s conversations with deterministic ordering', async () => {
+    const pageData = [{ id: 15, title: 'Recent', providerId: 5 }];
+    prisma.chatConversation.findMany.mockResolvedValue(pageData);
+    prisma.chatConversation.count.mockResolvedValue(21);
+
+    const result = await service.getConversations(42, {
+      page: 2,
+      limit: 10,
+    });
+
+    expect(prisma.chatConversation.findMany).toHaveBeenCalledWith({
+      where: { userId: 42 },
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      skip: 10,
+      take: 10,
+      select: {
+        id: true,
+        title: true,
+        providerId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    expect(prisma.chatConversation.count).toHaveBeenCalledWith({
+      where: { userId: 42 },
+    });
+    expect(result).toEqual({
+      data: pageData,
+      meta: { page: 2, limit: 10, total: 21, totalPages: 3 },
+    });
   });
 
   it('does not refund quota when persistence fails after provider success', async () => {

@@ -44,10 +44,14 @@ describe('SearchService', () => {
       webSearch: {
         create: jest.fn().mockResolvedValue({ id: 11 }),
         findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn(),
       },
       aPIUsageLog: {
         create: jest.fn().mockResolvedValue({ id: 21 }),
       },
+      $transaction: jest.fn((operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
     };
 
     subscriptionsService = {
@@ -283,6 +287,35 @@ describe('SearchService', () => {
 
     expect(subscriptionsService.reserveRequest).not.toHaveBeenCalled();
     expect(searchProvider.search).not.toHaveBeenCalled();
+  });
+
+  it('paginates the current user’s search history and reports matching total', async () => {
+    const pageData = [{ id: 4, query: 'NestJS', resultCount: 1 }];
+    prisma.webSearch.findMany.mockResolvedValue(pageData);
+    prisma.webSearch.count.mockResolvedValue(25);
+
+    const result = await service.getHistory(42, { page: 2, limit: 10 });
+
+    expect(prisma.webSearch.findMany).toHaveBeenCalledWith({
+      where: { userId: 42 },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: 10,
+      take: 10,
+      select: {
+        id: true,
+        query: true,
+        provider: true,
+        resultCount: true,
+        createdAt: true,
+      },
+    });
+    expect(prisma.webSearch.count).toHaveBeenCalledWith({
+      where: { userId: 42 },
+    });
+    expect(result).toEqual({
+      data: pageData,
+      meta: { page: 2, limit: 10, total: 25, totalPages: 3 },
+    });
   });
 });
 

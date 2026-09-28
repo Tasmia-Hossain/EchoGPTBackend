@@ -37,10 +37,14 @@ describe('SubscriptionsService', () => {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
         findMany: jest.fn(),
+        count: jest.fn(),
         update: jest.fn(),
         updateMany: jest.fn(),
         create: jest.fn(),
       },
+      $transaction: jest.fn((operations: Promise<unknown>[]) =>
+        Promise.all(operations),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -301,6 +305,29 @@ describe('SubscriptionsService', () => {
         subscription.currentPeriodStart,
       );
       expect(result.currentPeriodEnd).toEqual(subscription.currentPeriodEnd);
+    });
+
+    it('paginates subscriptions with a stable order and consistent total', async () => {
+      const pageData = [
+        activeSubscription({ id: 9, requestLimit: 100, usedRequests: 100 }),
+      ];
+      prisma.subscription.findMany.mockResolvedValue(pageData);
+      prisma.subscription.count.mockResolvedValue(41);
+
+      const result = await service.getAllSubscriptions({ page: 2, limit: 20 });
+
+      expect(prisma.subscription.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 20,
+          take: 20,
+        }),
+      );
+      expect(prisma.subscription.count).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({
+        data: [expect.objectContaining({ remainingRequests: 0 })],
+        meta: { page: 2, limit: 20, total: 41, totalPages: 3 },
+      });
     });
 
     it('deactivates every active row so duplicate rows cannot remain usable', async () => {

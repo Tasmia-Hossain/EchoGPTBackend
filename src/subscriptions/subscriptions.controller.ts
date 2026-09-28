@@ -6,13 +6,17 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiExtraModels,
+  getSchemaPath,
   ApiParam,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -22,6 +26,8 @@ import { SubscriptionsService } from './subscriptions.service';
 import { AdminSubscriptionResponseDto } from './dto/admin-subscription-response.dto';
 import { UpdateSubscriptionPlanDto } from './dto/update-subscription-plan.dto';
 import { UpdateSubscriptionStatusDto } from './dto/update-subscription-status.dto';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginationMetaDto } from '../common/dto/paginated-response.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -154,6 +160,7 @@ export class SubscriptionsController {
   }
 
   @Get('admin')
+  @ApiExtraModels(PaginationMetaDto, AdminSubscriptionResponseDto)
   @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
@@ -161,12 +168,22 @@ export class SubscriptionsController {
     description:
       'Returns subscription usage and basic user details. Password hashes, sessions, and provider credentials are never included.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1, maximum: 2147483647, description: 'One-based page; defaults to 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, minimum: 1, maximum: 100, description: 'Page size; defaults to 20.' })
   @ApiResponse({
     status: 200,
     description:
-      'All subscriptions returned successfully.',
-    type: AdminSubscriptionResponseDto,
-    isArray: true,
+      'Paginated subscriptions with page metadata.',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: { $ref: getSchemaPath(AdminSubscriptionResponseDto) },
+        },
+        meta: { $ref: getSchemaPath(PaginationMetaDto) },
+      },
+    },
   })
   @ApiResponse({
     status: 401,
@@ -176,8 +193,9 @@ export class SubscriptionsController {
     status: 403,
     description: 'Admin role required.',
   })
-  async getAllSubscriptions() {
-    return this.subscriptionsService.getAllSubscriptions();
+  @ApiResponse({ status: 400, description: 'Page or limit is invalid.' })
+  async getAllSubscriptions(@Query() pagination: PaginationQueryDto) {
+    return this.subscriptionsService.getAllSubscriptions(pagination);
   }
 
   @Get('admin/users/:userId')

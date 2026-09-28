@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { paginationSkip, toPaginatedResponse } from '../common/pagination';
 import { SubscriptionPlan } from './dto/update-subscription-plan.dto';
 import { SubscriptionStatus } from './dto/update-subscription-status.dto';
 
@@ -261,39 +263,44 @@ export class SubscriptionsService {
     return usage;
   }
 
-  async getAllSubscriptions() {
-    const subscriptions = await this.prisma.subscription.findMany({
-      orderBy: {
-        createdAt: 'desc',
-      },
-      select: {
-        id: true,
-        userId: true,
-        plan: true,
-        status: true,
-        requestLimit: true,
-        usedRequests: true,
-        currentPeriodStart: true,
-        currentPeriodEnd: true,
-        createdAt: true,
-        updatedAt: true,
-        user: {
-          select: {
-            id: true,
-            email: true,
-            name: true,
+  async getAllSubscriptions(pagination: PaginationQueryDto) {
+    const [subscriptions, total] = await this.prisma.$transaction([
+      this.prisma.subscription.findMany({
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: paginationSkip(pagination.page, pagination.limit),
+        take: pagination.limit,
+        select: {
+          id: true,
+          userId: true,
+          plan: true,
+          status: true,
+          requestLimit: true,
+          usedRequests: true,
+          currentPeriodStart: true,
+          currentPeriodEnd: true,
+          createdAt: true,
+          updatedAt: true,
+          user: {
+            select: {
+              id: true,
+              email: true,
+              name: true,
+            },
           },
         },
-      },
-    });
+      }),
+      this.prisma.subscription.count(),
+    ]);
 
-    return subscriptions.map((subscription) => ({
+    const data = subscriptions.map((subscription) => ({
       ...subscription,
       remainingRequests: Math.max(
         subscription.requestLimit - subscription.usedRequests,
         0,
       ),
     }));
+
+    return toPaginatedResponse(data, pagination.page, pagination.limit, total);
   }
 
   async getAdminSubscriptionForUser(userId: number) {

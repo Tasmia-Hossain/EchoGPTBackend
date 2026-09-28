@@ -28,10 +28,16 @@ describe('UsersService', () => {
       user: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
         update: jest.fn(),
       },
-      $transaction: jest.fn(async (operation: (transaction: any) => unknown) =>
-        operation(tx),
+      aPIUsageLog: {
+        findMany: jest.fn(),
+        count: jest.fn(),
+      },
+      $transaction: jest.fn((operation: any) =>
+        Array.isArray(operation) ? Promise.all(operation) : operation(tx),
       ),
     };
 
@@ -250,6 +256,55 @@ describe('UsersService', () => {
           },
         }),
       );
+    });
+  });
+
+  describe('admin pagination', () => {
+    it('paginates active users without removing the soft-delete filter', async () => {
+      const pageData = [{ id: 8, email: 'active@example.com' }];
+      prisma.user.findMany.mockResolvedValue(pageData);
+      prisma.user.count.mockResolvedValue(45);
+
+      const result = await service.getAllUsers({ page: 3, limit: 10 });
+
+      expect(prisma.user.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { deletedAt: null },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 20,
+          take: 10,
+        }),
+      );
+      expect(prisma.user.findMany.mock.calls[0][0].select).not.toHaveProperty(
+        'passwordHash',
+      );
+      expect(prisma.user.count).toHaveBeenCalledWith({
+        where: { deletedAt: null },
+      });
+      expect(result).toEqual({
+        data: pageData,
+        meta: { page: 3, limit: 10, total: 45, totalPages: 5 },
+      });
+    });
+
+    it('paginates API usage logs and reports the unpaginated total', async () => {
+      const pageData = [{ id: 31, endpoint: '/chat' }];
+      prisma.aPIUsageLog.findMany.mockResolvedValue(pageData);
+      prisma.aPIUsageLog.count.mockResolvedValue(1);
+
+      const result = await service.getAdminRequestLogs({ page: 1, limit: 20 });
+
+      expect(prisma.aPIUsageLog.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: 0,
+          take: 20,
+        }),
+      );
+      expect(result).toEqual({
+        data: pageData,
+        meta: { page: 1, limit: 20, total: 1, totalPages: 1 },
+      });
     });
   });
 });

@@ -6,6 +6,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -14,12 +15,15 @@ import {
   ApiBearerAuth,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 
 import { ChatService } from './chat.service';
 import { SendMessageDto } from './dto/send-message.dto';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
@@ -87,21 +91,29 @@ export class ChatController {
   @Get('conversations')
   @ApiOperation({
     summary: 'Get current user conversations',
+    description:
+      'Returns only the authenticated user’s conversations, ordered by most recently updated first.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1, maximum: 2147483647, description: 'One-based page; defaults to 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, minimum: 1, maximum: 100, description: 'Page size; defaults to 20.' })
   @ApiResponse({
     status: 200,
     description:
-      'User conversations returned successfully.',
+      'Paginated conversations with page metadata.',
+    type: PaginatedResponseDto,
   })
+  @ApiResponse({ status: 400, description: 'Page or limit is invalid.' })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
   })
   async getConversations(
     @Req() request: AuthenticatedRequest,
+    @Query() pagination: PaginationQueryDto,
   ) {
     return this.chatService.getConversations(
       request.user.userId,
+      pagination,
     );
   }
 

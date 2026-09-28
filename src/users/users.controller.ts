@@ -5,12 +5,14 @@ import {
   Get,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -19,6 +21,8 @@ import { Request } from 'express';
 import { UsersService } from './users.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { PaginatedResponseDto } from '../common/dto/paginated-response.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -190,12 +194,17 @@ export class UsersController {
   @Roles('ADMIN')
   @ApiOperation({
     summary: 'Get all active users (Admin only)',
+    description: 'Returns active users only, ordered newest first.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1, maximum: 2147483647, description: 'One-based page; defaults to 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, minimum: 1, maximum: 100, description: 'Page size; defaults to 20.' })
   @ApiResponse({
     status: 200,
     description:
-      'List of all active users returned successfully.',
+      'Paginated active users with page metadata.',
+    type: PaginatedResponseDto,
   })
+  @ApiResponse({ status: 400, description: 'Page or limit is invalid.' })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
@@ -204,8 +213,8 @@ export class UsersController {
     status: 403,
     description: 'Admin role required.',
   })
-  async getAllUsers() {
-    return this.usersService.getAllUsers();
+  async getAllUsers(@Query() pagination: PaginationQueryDto) {
+    return this.usersService.getAllUsers(pagination);
   }
 
   @Get('admin/dashboard')
@@ -261,13 +270,18 @@ export class UsersController {
   @Roles('ADMIN')
   @ApiOperation({
     summary:
-      'Get latest API request logs (Admin only)',
+      'Get API request logs (Admin only)',
+    description: 'Returns request logs newest first.',
   })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1, minimum: 1, maximum: 2147483647, description: 'One-based page; defaults to 1.' })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 20, minimum: 1, maximum: 100, description: 'Page size; defaults to 20.' })
   @ApiResponse({
     status: 200,
     description:
-      'Latest API request logs returned successfully.',
+      'Paginated API request logs with page metadata.',
+    type: PaginatedResponseDto,
   })
+  @ApiResponse({ status: 400, description: 'Page or limit is invalid.' })
   @ApiResponse({
     status: 401,
     description: 'Authentication required.',
@@ -276,8 +290,8 @@ export class UsersController {
     status: 403,
     description: 'Admin role required.',
   })
-  async getAdminRequestLogs() {
-    return this.usersService.getAdminRequestLogs();
+  async getAdminRequestLogs(@Query() pagination: PaginationQueryDto) {
+    return this.usersService.getAdminRequestLogs(pagination);
   }
 
   @Get('admin/health')

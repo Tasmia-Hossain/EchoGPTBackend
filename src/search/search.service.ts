@@ -13,6 +13,8 @@ import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 import { WikipediaProvider } from './providers/wikipedia.provider';
 import { SearchResult } from './providers/search-provider.interface';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
+import { paginationSkip, toPaginatedResponse } from '../common/pagination';
 
 const DEFAULT_SEARCH_CACHE_TTL_SECONDS = 3600;
 const SEARCH_CACHE_SOURCE = 'wikipedia:v1';
@@ -170,19 +172,26 @@ export class SearchService {
     };
   }
 
-  async getHistory(userId: number) {
-    return this.prisma.webSearch.findMany({
-      where: { userId },
-      orderBy: { createdAt: 'desc' },
-      take: 20,
-      select: {
-        id: true,
-        query: true,
-        provider: true,
-        resultCount: true,
-        createdAt: true,
-      },
-    });
+  async getHistory(userId: number, pagination: PaginationQueryDto) {
+    const where = { userId };
+    const [data, total] = await this.prisma.$transaction([
+      this.prisma.webSearch.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: paginationSkip(pagination.page, pagination.limit),
+        take: pagination.limit,
+        select: {
+          id: true,
+          query: true,
+          provider: true,
+          resultCount: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.webSearch.count({ where }),
+    ]);
+
+    return toPaginatedResponse(data, pagination.page, pagination.limit, total);
   }
 
   async getRecentSearches(userId: number) {
