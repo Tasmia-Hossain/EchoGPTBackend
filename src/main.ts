@@ -8,10 +8,19 @@ import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+  const corsOrigins = configService
+    .get<string>('CORS_ORIGINS')!
+    .split(',');
 
   app.use(helmet());
   app.enableCors({
-    origin: true, 
+    origin: (
+      origin: string | undefined,
+      callback: (error: Error | null, allow?: boolean) => void,
+    ) => {
+      callback(null, !origin || corsOrigins.includes(origin));
+    },
     credentials: true,
   });
 
@@ -35,7 +44,6 @@ async function bootstrap() {
 
   SwaggerModule.setup('api/docs', app, swaggerDocument);
 
-  const configService = app.get(ConfigService);
   const port = Number(configService.get<string>('PORT') ?? '3000');
 
   await app.listen(port);

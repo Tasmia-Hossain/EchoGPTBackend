@@ -43,6 +43,10 @@ class EnvironmentVariables {
   @Max(65535)
   PORT!: number;
 
+  @IsString()
+  @IsNotEmpty()
+  CORS_ORIGINS!: string;
+
   @IsOptional()
   @IsIn(['development', 'test', 'production'])
   NODE_ENV?: string;
@@ -68,6 +72,30 @@ class EnvironmentVariables {
   AI_PROVIDER_ENCRYPTION_KEY!: string;
 }
 
+function normalizeCorsOrigin(origin: string): string | undefined {
+  if (/^chrome-extension:\/\/[a-p]{32}$/.test(origin)) {
+    return origin;
+  }
+
+  try {
+    const url = new URL(origin);
+    if (
+      !['http:', 'https:'].includes(url.protocol) ||
+      url.username ||
+      url.password ||
+      url.pathname !== '/' ||
+      url.search ||
+      url.hash
+    ) {
+      return undefined;
+    }
+
+    return url.origin;
+  } catch {
+    return undefined;
+  }
+}
+
 export function validate(config: Record<string, unknown>) {
   const validatedConfig = plainToInstance(EnvironmentVariables, config, {
     enableImplicitConversion: true,
@@ -85,6 +113,22 @@ export function validate(config: Record<string, unknown>) {
         .join('; '),
     );
   }
+
+  const corsOrigins = validatedConfig.CORS_ORIGINS.split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const normalizedCorsOrigins = corsOrigins.map(normalizeCorsOrigin);
+
+  if (
+    normalizedCorsOrigins.length === 0 ||
+    normalizedCorsOrigins.some((origin) => origin === undefined)
+  ) {
+    throw new Error(
+      'CORS_ORIGINS must be a comma-separated list of exact HTTP(S) or Chrome extension origins.',
+    );
+  }
+
+  validatedConfig.CORS_ORIGINS = normalizedCorsOrigins.join(',');
 
   return validatedConfig;
 }
