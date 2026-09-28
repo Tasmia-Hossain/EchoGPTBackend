@@ -1,12 +1,17 @@
 import {
   Controller,
+  Body,
   Get,
+  Param,
+  ParseIntPipe,
+  Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
+  ApiParam,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -14,6 +19,9 @@ import {
 import { Request } from 'express';
 
 import { SubscriptionsService } from './subscriptions.service';
+import { AdminSubscriptionResponseDto } from './dto/admin-subscription-response.dto';
+import { UpdateSubscriptionPlanDto } from './dto/update-subscription-plan.dto';
+import { UpdateSubscriptionStatusDto } from './dto/update-subscription-status.dto';
 
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -146,16 +154,19 @@ export class SubscriptionsController {
   }
 
   @Get('admin')
-  @UseGuards(JwtAuthGuard, RolesGuard)
+  @UseGuards(RolesGuard)
   @Roles('ADMIN')
   @ApiOperation({
-    summary:
-      'Get all user subscriptions (Admin only)',
+    summary: 'List user subscriptions (Admin only)',
+    description:
+      'Returns subscription usage and basic user details. Password hashes, sessions, and provider credentials are never included.',
   })
   @ApiResponse({
     status: 200,
     description:
       'All subscriptions returned successfully.',
+    type: AdminSubscriptionResponseDto,
+    isArray: true,
   })
   @ApiResponse({
     status: 401,
@@ -167,5 +178,79 @@ export class SubscriptionsController {
   })
   async getAllSubscriptions() {
     return this.subscriptionsService.getAllSubscriptions();
+  }
+
+  @Get('admin/users/:userId')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'View a user subscription (Admin only)',
+    description:
+      'Returns the latest active subscription for the user, or their latest subscription when none are active.',
+  })
+  @ApiParam({ name: 'userId', type: Number, description: 'Positive user ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription returned successfully.',
+    type: AdminSubscriptionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'User ID is invalid.' })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Admin role required.' })
+  @ApiResponse({ status: 404, description: 'User or subscription not found.' })
+  async getUserSubscription(
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.subscriptionsService.getAdminSubscriptionForUser(userId);
+  }
+
+  @Patch('admin/users/:userId/plan')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Change a user subscription plan (Admin only)',
+    description:
+      'Changes the selected subscription plan and corresponding request limit. Usage and period dates are preserved.',
+  })
+  @ApiParam({ name: 'userId', type: Number, description: 'Positive user ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription plan updated successfully.',
+    type: AdminSubscriptionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'User ID or request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Admin role required.' })
+  @ApiResponse({ status: 404, description: 'User or subscription not found.' })
+  async updateUserPlan(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() dto: UpdateSubscriptionPlanDto,
+  ) {
+    return this.subscriptionsService.updateUserPlan(userId, dto.plan);
+  }
+
+  @Patch('admin/users/:userId/status')
+  @UseGuards(RolesGuard)
+  @Roles('ADMIN')
+  @ApiOperation({
+    summary: 'Activate or deactivate a user subscription (Admin only)',
+    description:
+      'INACTIVE disables all currently active subscription rows for the user. ACTIVE activates the selected latest subscription without creating a new row.',
+  })
+  @ApiParam({ name: 'userId', type: Number, description: 'Positive user ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription status updated successfully.',
+    type: AdminSubscriptionResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'User ID or request body is invalid.' })
+  @ApiResponse({ status: 401, description: 'Authentication required.' })
+  @ApiResponse({ status: 403, description: 'Admin role required.' })
+  @ApiResponse({ status: 404, description: 'User or subscription not found.' })
+  async updateUserStatus(
+    @Param('userId', ParseIntPipe) userId: number,
+    @Body() dto: UpdateSubscriptionStatusDto,
+  ) {
+    return this.subscriptionsService.updateUserStatus(userId, dto.status);
   }
 }

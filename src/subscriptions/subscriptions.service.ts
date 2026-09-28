@@ -1,10 +1,13 @@
 import {
   BadRequestException,
+  InternalServerErrorException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { SubscriptionPlan } from './dto/update-subscription-plan.dto';
+import { SubscriptionStatus } from './dto/update-subscription-status.dto';
 
 interface RequestReservation {
   subscriptionId: number;
@@ -265,6 +268,7 @@ export class SubscriptionsService {
       },
       select: {
         id: true,
+        userId: true,
         plan: true,
         status: true,
         requestLimit: true,
@@ -290,6 +294,179 @@ export class SubscriptionsService {
         0,
       ),
     }));
+  }
+
+  async getAdminSubscriptionForUser(userId: number) {
+    await this.ensureManageableUserExists(userId);
+
+    const subscription = await this.findAdminSubscription(userId);
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    return this.toAdminSubscriptionResponse(subscription);
+  }
+
+  async updateUserPlan(userId: number, plan: SubscriptionPlan) {
+    await this.ensureManageableUserExists(userId);
+
+    const subscription = await this.findAdminSubscription(userId);
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    const requestLimit = plan === 'PREMIUM' ? 1000 : 100;
+    const updatedSubscription = await this.updateSubscriptionSafely(
+      subscription.id,
+      {
+        plan,
+        requestLimit,
+      },
+    );
+
+    return this.toAdminSubscriptionResponse(updatedSubscription);
+  }
+
+  async updateUserStatus(userId: number, status: SubscriptionStatus) {
+    await this.ensureManageableUserExists(userId);
+
+    const subscription = await this.findAdminSubscription(userId);
+    if (!subscription) {
+      throw new NotFoundException('Subscription not found');
+    }
+
+    if (status === 'INACTIVE') {
+      await this.prisma.subscription.updateMany({
+        where: {
+          userId,
+          status: 'ACTIVE',
+        },
+        data: {
+          status: 'INACTIVE',
+        },
+      });
+
+      const updatedSubscription =
+        await this.prisma.subscription.findUnique({
+          where: { id: subscription.id },
+          include: this.adminSubscriptionInclude(),
+        });
+
+      if (!updatedSubscription) {
+        throw new NotFoundException('Subscription not found');
+      }
+
+      return this.toAdminSubscriptionResponse(updatedSubscription);
+    }
+
+    if (subscription.status === 'ACTIVE') {
+      return this.toAdminSubscriptionResponse(subscription);
+    }
+
+    const updatedSubscription = await this.updateSubscriptionSafely(
+      subscription.id,
+      { status: 'ACTIVE' },
+    );
+
+    return this.toAdminSubscriptionResponse(updatedSubscription);
+  }
+
+  private async ensureManageableUserExists(userId: number) {
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      throw new BadRequestException('User ID must be a positive integer');
+    }
+
+    const user = await this.prisma.user.findFirst({
+      where: {
+        id: userId,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+  }
+
+  private async findAdminSubscription(userId: number) {
+    const include = this.adminSubscriptionInclude();
+    const activeSubscription = await this.prisma.subscription.findFirst({
+      where: {
+        userId,
+        status: 'ACTIVE',
+      },
+      orderBy: { createdAt: 'desc' },
+      include,
+    });
+
+    if (activeSubscription) {
+      return activeSubscription;
+    }
+
+    return this.prisma.subscription.findFirst({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      include,
+    });
+  }
+
+  private adminSubscriptionInclude() {
+    return {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+        },
+      },
+    };
+  }
+
+  private async updateSubscriptionSafely(
+    subscriptionId: number,
+    data: { plan?: SubscriptionPlan; status?: SubscriptionStatus; requestLimit?: number },
+  ) {
+    try {
+      return await this.prisma.subscription.update({
+        where: { id: subscriptionId },
+        data,
+        include: this.adminSubscriptionInclude(),
+      });
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        error.code === 'P2025'
+      ) {
+        throw new NotFoundException('Subscription not found');
+      }
+
+      throw new InternalServerErrorException(
+        'Unable to update subscription',
+      );
+    }
+  }
+
+  private toAdminSubscriptionResponse(subscription: any) {
+    return {
+      id: subscription.id,
+      userId: subscription.userId,
+      plan: subscription.plan,
+      status: subscription.status,
+      requestLimit: subscription.requestLimit,
+      usedRequests: subscription.usedRequests,
+      remainingRequests: Math.max(
+        subscription.requestLimit - subscription.usedRequests,
+        0,
+      ),
+      currentPeriodStart: subscription.currentPeriodStart,
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      createdAt: subscription.createdAt,
+      updatedAt: subscription.updatedAt,
+      user: subscription.user,
+    };
   }
 
   /**
