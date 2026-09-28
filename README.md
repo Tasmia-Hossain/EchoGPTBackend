@@ -10,7 +10,7 @@ Backend REST API for the EchoGPT Chrome Extension, built with NestJS, PostgreSQL
 - Admin-managed OpenAI, Anthropic, and Gemini providers
 - Encrypted AI provider API keys
 - Chat conversations and message history
-- Wikipedia-backed web search and per-user search history
+- Wikipedia-backed web search with shared result caching and per-user search history
 - Admin dashboard, usage analytics, request logs, and health endpoint
 - Swagger/OpenAPI documentation
 
@@ -45,12 +45,15 @@ Required variables:
 | `AI_PROVIDER_ENCRYPTION_KEY` | Exactly 32 printable ASCII characters (32 UTF-8 bytes) |
 | `PORT` | HTTP port, for example `3000` |
 | `CORS_ORIGINS` | Comma-separated exact trusted origins, for example `http://localhost:3000` |
+| `SEARCH_CACHE_TTL_SECONDS` | Optional public search-result cache lifetime in seconds; defaults to `3600` (maximum `2592000`) |
 
 `NODE_ENV` is optional and can be `development`, `test`, or `production`. The provider API key variables in `.env.example` are optional; provider keys can be configured through the admin provider API.
 
 Outbound AI-provider and Wikipedia requests have a fixed 30-second timeout (`EXTERNAL_HTTP_TIMEOUT_MS` in `src/config/external-http.constants.ts`). Provider errors and timeout details are returned to clients as generic service-unavailable responses.
 
 `CORS_ORIGINS` accepts multiple origins separated by commas. Entries are trimmed and empty entries are ignored. Configure only trusted frontend or browser-extension origins in production. For a Chrome extension, use its actual origin in the form `chrome-extension://<extension-id>`; obtain the ID from the installed or unpacked extension rather than assuming a production ID. Swagger is served from the API origin at `/api/docs`, so same-origin access does not require another CORS entry.
+
+Wikipedia results are cached across users by a normalized query for the duration configured by `SEARCH_CACHE_TTL_SECONDS` (one hour by default). Cache hits still consume one subscription request, so cached searches cannot bypass usage limits; they only avoid another external Wikipedia request. Expired entries are refreshed on demand.
 
 Generate suitable local secret values with Node.js:
 

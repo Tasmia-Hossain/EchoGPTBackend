@@ -8,6 +8,7 @@ const validConfig = {
   JWT_EXPIRES_IN: '15m',
   JWT_REFRESH_EXPIRES_IN: '7d',
   PORT: '3000',
+  CORS_ORIGINS: 'http://localhost:3000',
   AI_PROVIDER_ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef',
 };
 
@@ -51,4 +52,26 @@ describe('environment CORS origin validation', () => {
       /CORS_ORIGINS/,
     );
   });
+});
+
+describe('search cache TTL validation', () => {
+  it('accepts a positive integer TTL', () => {
+    expect(
+      validate({ ...validConfig, SEARCH_CACHE_TTL_SECONDS: '7200' })
+        .SEARCH_CACHE_TTL_SECONDS,
+    ).toBe(7200);
+  });
+
+  it('allows the default TTL to be used when unset', () => {
+    expect(validate(validConfig).SEARCH_CACHE_TTL_SECONDS).toBeUndefined();
+  });
+
+  it.each(['0', '-1', '1.5', 'not-a-number', '2592001'])(
+    'rejects invalid TTL value %s',
+    (ttl) => {
+      expect(() =>
+        validate({ ...validConfig, SEARCH_CACHE_TTL_SECONDS: ttl }),
+      ).toThrow();
+    },
+  );
 });

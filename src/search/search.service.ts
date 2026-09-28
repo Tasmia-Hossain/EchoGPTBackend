@@ -4,11 +4,18 @@ import {
   InternalServerErrorException,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { createHash } from 'node:crypto';
+import { Prisma } from '../generated/prisma/client';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { SubscriptionsService } from '../subscriptions/subscriptions.service';
 
 import { WikipediaProvider } from './providers/wikipedia.provider';
+import { SearchResult } from './providers/search-provider.interface';
+
+const DEFAULT_SEARCH_CACHE_TTL_SECONDS = 3600;
+const SEARCH_CACHE_SOURCE = 'wikipedia:v1';
 
 @Injectable()
 export class SearchService {
@@ -16,65 +23,128 @@ export class SearchService {
     private readonly prisma: PrismaService,
     private readonly subscriptionsService: SubscriptionsService,
     private readonly searchProvider: WikipediaProvider,
+    private readonly configService: ConfigService,
   ) {}
 
   async search(userId: number, query: string) {
-    const trimmedQuery = query.trim();
+    const normalizedQuery = query.trim().replace(/\s+/g, ' ');
 
-    if (!trimmedQuery) {
+    if (!normalizedQuery) {
       throw new BadRequestException(
         'Search query cannot be empty',
       );
     }
 
+    const queryHash = createHash('sha256')
+      .update(
+        `${SEARCH_CACHE_SOURCE}:${normalizedQuery.toLocaleLowerCase('en-US')}`,
+      )
+      .digest('hex');
+    const now = new Date();
+    let cachedResults: SearchResult[] | undefined;
+
+    try {
+      const cacheEntry = await this.prisma.searchCache.findUnique({
+        where: { queryHash },
+        select: { results: true, expiresAt: true },
+      });
+
+      if (
+        cacheEntry &&
+        cacheEntry.expiresAt > now &&
+        isSearchResults(cacheEntry.results)
+      ) {
+        cachedResults = cacheEntry.results;
+      }
+    } catch {
+      // Search remains available if the optional cache lookup fails.
+    }
+
     const reservation =
       await this.subscriptionsService.reserveRequest(userId);
 
-    const startedAt = Date.now();
-    let results;
+    let results = cachedResults;
+    let responseTime = 0;
 
-    try {
-      results = await this.searchProvider.search(trimmedQuery);
-    } catch {
-      const responseTime = Date.now() - startedAt;
+    if (!results) {
+      const startedAt = Date.now();
 
       try {
-        await this.subscriptionsService.refundRequest(
-          userId,
-          reservation.reservation,
-        );
+        results = await this.searchProvider.search(normalizedQuery);
+        if (!isSearchResults(results)) {
+          throw new Error('Search provider returned malformed results');
+        }
       } catch {
-        throw new InternalServerErrorException(
-          'Unable to restore request quota after search provider failure',
+        responseTime = Date.now() - startedAt;
+
+        try {
+          await this.subscriptionsService.refundRequest(
+            userId,
+            reservation.reservation,
+          );
+        } catch {
+          throw new InternalServerErrorException(
+            'Unable to restore request quota after search provider failure',
+          );
+        }
+
+        try {
+          await this.prisma.aPIUsageLog.create({
+            data: {
+              userId,
+              endpoint: '/search',
+              method: 'POST',
+              provider: 'WIKIPEDIA',
+              statusCode: 502,
+              responseTime,
+            },
+          });
+        } catch {
+          // A logging failure must not mask the controlled search-provider error.
+        }
+
+        throw new ServiceUnavailableException(
+          'Search provider is currently unavailable',
         );
       }
 
+      responseTime = Date.now() - startedAt;
+
+      const configuredTtl = Number(
+        this.configService.get('SEARCH_CACHE_TTL_SECONDS') ??
+          DEFAULT_SEARCH_CACHE_TTL_SECONDS,
+      );
+      const ttlSeconds =
+        Number.isInteger(configuredTtl) && configuredTtl > 0
+          ? configuredTtl
+          : DEFAULT_SEARCH_CACHE_TTL_SECONDS;
+      const expiresAt = new Date(Date.now() + ttlSeconds * 1000);
+      const cacheResults = results as unknown as Prisma.InputJsonValue;
+
       try {
-        await this.prisma.aPIUsageLog.create({
-          data: {
-            userId,
-            endpoint: '/search',
-            method: 'POST',
-            provider: 'WIKIPEDIA',
-            statusCode: 502,
-            responseTime,
+        await this.prisma.searchCache.upsert({
+          where: { queryHash },
+          create: {
+            queryHash,
+            query: normalizedQuery.toLocaleLowerCase('en-US'),
+            results: cacheResults,
+            expiresAt,
+          },
+          update: {
+            query: normalizedQuery.toLocaleLowerCase('en-US'),
+            results: cacheResults,
+            expiresAt,
           },
         });
       } catch {
-        // A logging failure must not mask the controlled search-provider error.
+        // Cache storage is best-effort; a successful search still succeeds.
       }
-
-      throw new ServiceUnavailableException(
-        'Search provider is currently unavailable',
-      );
     }
-
-    const responseTime = Date.now() - startedAt;
 
     await this.prisma.webSearch.create({
       data: {
         userId,
-        query: trimmedQuery,
+        query: normalizedQuery,
         provider: 'WIKIPEDIA',
         resultCount: results.length,
       },
@@ -92,7 +162,7 @@ export class SearchService {
     });
 
     return {
-      query: trimmedQuery,
+      query: normalizedQuery,
       provider: 'WIKIPEDIA',
       resultCount: results.length,
       results,
@@ -154,4 +224,18 @@ export class SearchService {
 
     return [...new Set(searches.map((search) => search.query))];
   }
+}
+
+function isSearchResults(value: unknown): value is SearchResult[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (result) =>
+        result !== null &&
+        typeof result === 'object' &&
+        typeof (result as SearchResult).title === 'string' &&
+        typeof (result as SearchResult).url === 'string' &&
+        typeof (result as SearchResult).snippet === 'string',
+    )
+  );
 }

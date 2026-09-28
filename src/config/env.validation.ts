@@ -48,6 +48,12 @@ class EnvironmentVariables {
   CORS_ORIGINS!: string;
 
   @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(2592000)
+  SEARCH_CACHE_TTL_SECONDS?: number;
+
+  @IsOptional()
   @IsIn(['development', 'test', 'production'])
   NODE_ENV?: string;
 

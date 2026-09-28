@@ -38,9 +38,13 @@ export class WikipediaProvider implements SearchProvider {
       throw new Error('Wikipedia search request failed');
     }
 
-    const data = (await response.json()) as WikipediaResponse;
+    const data: unknown = await response.json();
 
-    const results = data.query?.search ?? [];
+    if (!isWikipediaResponse(data)) {
+      throw new Error('Wikipedia returned an invalid search response');
+    }
+
+    const results = data.query.search;
 
     return results.map((result) => ({
       title: result.title,
@@ -48,4 +52,30 @@ export class WikipediaProvider implements SearchProvider {
       snippet: result.snippet.replace(/<[^>]*>/g, ''),
     }));
   }
+}
+
+function isWikipediaResponse(value: unknown): value is WikipediaResponse & {
+  query: { search: WikipediaSearchResult[] };
+} {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const query = (value as { query?: unknown }).query;
+  if (!query || typeof query !== 'object') {
+    return false;
+  }
+
+  const search = (query as { search?: unknown }).search;
+  return (
+    Array.isArray(search) &&
+    search.every(
+      (result) =>
+        result !== null &&
+        typeof result === 'object' &&
+        typeof (result as WikipediaSearchResult).title === 'string' &&
+        Number.isInteger((result as WikipediaSearchResult).pageid) &&
+        typeof (result as WikipediaSearchResult).snippet === 'string',
+    )
+  );
 }

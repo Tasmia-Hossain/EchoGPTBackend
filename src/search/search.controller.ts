@@ -40,6 +40,8 @@ export class SearchController {
   @Post()
   @ApiOperation({
     summary: 'Search the web',
+    description:
+      'Searches Wikipedia. Recent public results may be served from cache; every successful search, including a cache hit, consumes one subscription request.',
   })
   @ApiResponse({
     status: 201,
