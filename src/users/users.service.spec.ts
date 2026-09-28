@@ -1,5 +1,10 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
+import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from './users.service';
@@ -7,14 +12,27 @@ import { UsersService } from './users.service';
 describe('UsersService', () => {
   let service: UsersService;
   let prisma: any;
+  let tx: any;
 
   beforeEach(async () => {
+    tx = {
+      user: {
+        update: jest.fn(),
+      },
+      session: {
+        updateMany: jest.fn(),
+      },
+    };
+
     prisma = {
       user: {
         findUnique: jest.fn(),
         findFirst: jest.fn(),
         update: jest.fn(),
       },
+      $transaction: jest.fn(async (operation: (transaction: any) => unknown) =>
+        operation(tx),
+      ),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -149,6 +167,89 @@ describe('UsersService', () => {
           email: 'new@example.com',
         }),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('changePassword', () => {
+    const currentPassword = 'CurrentPassword123!';
+    const newPassword = 'NewStrongPassword123!';
+
+    async function setUpUser() {
+      prisma.user.findUnique.mockResolvedValue({
+        id: 42,
+        passwordHash: await bcrypt.hash(currentPassword, 4),
+      });
+      tx.user.update.mockResolvedValue({ id: 42 });
+      tx.session.updateMany.mockResolvedValue({ count: 2 });
+    }
+
+    it('changes the password and atomically revokes all active refresh sessions for that user', async () => {
+      await setUpUser();
+
+      const result = await service.changePassword(
+        42,
+        currentPassword,
+        newPassword,
+      );
+
+      expect(result).toEqual({ message: 'Password changed successfully' });
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+      expect(tx.user.update).toHaveBeenCalledWith({
+        where: { id: 42 },
+        data: {
+          passwordHash: expect.not.stringMatching(/^NewStrongPassword123!$/),
+        },
+      });
+      expect(tx.session.updateMany).toHaveBeenCalledWith({
+        where: {
+          userId: 42,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: expect.any(Date),
+        },
+      });
+      expect(
+        tx.user.update.mock.invocationCallOrder[0],
+      ).toBeLessThan(tx.session.updateMany.mock.invocationCallOrder[0]);
+    });
+
+    it('does not revoke sessions when the current password is incorrect', async () => {
+      await setUpUser();
+
+      await expect(
+        service.changePassword(42, 'incorrect-current-password', newPassword),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.user.update).not.toHaveBeenCalled();
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('does not attempt session revocation if the password update fails', async () => {
+      await setUpUser();
+      tx.user.update.mockRejectedValue(new Error('password update failed'));
+
+      await expect(
+        service.changePassword(42, currentPassword, newPassword),
+      ).rejects.toThrow('password update failed');
+
+      expect(tx.session.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('limits revocation to the changing user and leaves other users sessions untouched', async () => {
+      await setUpUser();
+
+      await service.changePassword(42, currentPassword, newPassword);
+
+      expect(tx.session.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            userId: 42,
+            revokedAt: null,
+          },
+        }),
+      );
     });
   });
 });

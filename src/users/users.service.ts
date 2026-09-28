@@ -153,13 +153,25 @@ export class UsersService {
       12,
     );
 
-    await this.prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        passwordHash: newPasswordHash,
-      },
+    await this.prisma.$transaction(async (tx) => {
+      await tx.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          passwordHash: newPasswordHash,
+        },
+      });
+
+      await tx.session.updateMany({
+        where: {
+          userId,
+          revokedAt: null,
+        },
+        data: {
+          revokedAt: new Date(),
+        },
+      });
     });
 
     return {

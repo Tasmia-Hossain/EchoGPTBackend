@@ -372,6 +372,22 @@ describe('AuthService', () => {
       expect(tx.session.create).not.toHaveBeenCalled();
     });
 
+    it('rejects a refresh token whose session was revoked by password change', async () => {
+      await setUpValidRefresh();
+      prisma.session.findUnique.mockResolvedValue({
+        ...oldSession,
+        revokedAt: new Date(),
+      });
+
+      await expect(
+        service.refresh(presentedRefreshToken),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(prisma.$transaction).not.toHaveBeenCalled();
+      expect(tx.session.create).not.toHaveBeenCalled();
+      expect(jwt.signAsync).not.toHaveBeenCalled();
+    });
+
     it('rejects a concurrent replay when the atomic revocation affects no session', async () => {
       await setUpValidRefresh();
 
