@@ -8,6 +8,17 @@ import * as bcrypt from 'bcrypt';
 
 import { PrismaService } from '../prisma/prisma.service';
 
+function isPrismaUniqueConstraintError(
+  error: unknown,
+): error is { code: 'P2002' } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    error.code === 'P2002'
+  );
+}
+
 @Injectable()
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -51,10 +62,27 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    if (data.email && data.email !== user.email) {
-      const existingUser = await this.prisma.user.findUnique({
+    const normalizedEmail =
+      data.email === undefined
+        ? undefined
+        : this.normalizeEmail(data.email);
+
+    if (
+      normalizedEmail !== undefined &&
+      normalizedEmail !== this.normalizeEmail(user.email)
+    ) {
+      const existingUser = await this.prisma.user.findFirst({
         where: {
-          email: data.email,
+          email: {
+            equals: normalizedEmail,
+            mode: 'insensitive',
+          },
+          id: {
+            not: userId,
+          },
+        },
+        select: {
+          id: true,
         },
       });
 
@@ -63,29 +91,35 @@ export class UsersService {
       }
     }
 
-    const updatedUser = await this.prisma.user.update({
-      where: {
-        id: userId,
-      },
-      data: {
-        ...(data.email !== undefined && {
-          email: data.email,
-        }),
-        ...(data.name !== undefined && {
-          name: data.name,
-        }),
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        isEmailVerified: true,
-        createdAt: true,
-        updatedAt: true,
-      },
-    });
+    try {
+      return await this.prisma.user.update({
+        where: {
+          id: userId,
+        },
+        data: {
+          ...(normalizedEmail !== undefined && {
+            email: normalizedEmail,
+          }),
+          ...(data.name !== undefined && {
+            name: data.name,
+          }),
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          isEmailVerified: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+    } catch (error) {
+      if (isPrismaUniqueConstraintError(error)) {
+        throw new ConflictException('Email already registered');
+      }
 
-    return updatedUser;
+      throw error;
+    }
   }
 
   async changePassword(
@@ -379,5 +413,9 @@ export class UsersService {
         heapTotalBytes: memoryUsage.heapTotal,
       },
     };
+  }
+
+  private normalizeEmail(email: string): string {
+    return email.trim().toLowerCase();
   }
 }

@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsEmail,
   IsOptional,
@@ -13,8 +14,11 @@ import {
 export class RegisterDto {
   @ApiProperty({
     example: 'user@example.com',
-    description: 'User email address.',
+    description: 'User email address. Surrounding whitespace is ignored.',
   })
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
   @IsEmail()
   email!: string;
 

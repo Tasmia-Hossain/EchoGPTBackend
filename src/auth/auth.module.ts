@@ -1,9 +1,6 @@
 import { Module } from '@nestjs/common';
-import { JwtModule } from '@nestjs/jwt';
-import {
-  ConfigModule,
-  ConfigService,
-} from '@nestjs/config';
+import { JwtModule, JwtModuleOptions } from '@nestjs/jwt';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PassportModule } from '@nestjs/passport';
 
 import { AuthController } from './auth.controller';
@@ -21,16 +18,13 @@ import { PrismaModule } from '../prisma/prisma.module';
       imports: [ConfigModule],
       inject: [ConfigService],
 
-      useFactory: (
-        configService: ConfigService,
-      ) => ({
-        secret:
-          configService.getOrThrow<string>(
-            'JWT_SECRET',
-          ),
+      useFactory: (configService: ConfigService) => ({
+        secret: configService.getOrThrow<string>('JWT_SECRET'),
 
         signOptions: {
-          expiresIn: '15m',
+          expiresIn: configService.getOrThrow<
+            NonNullable<JwtModuleOptions['signOptions']>['expiresIn']
+          >('JWT_EXPIRES_IN'),
         },
       }),
     }),
@@ -38,10 +32,7 @@ import { PrismaModule } from '../prisma/prisma.module';
 
   controllers: [AuthController],
 
-  providers: [
-    AuthService,
-    JwtStrategy,
-  ],
+  providers: [AuthService, JwtStrategy],
 
   exports: [AuthService],
 })

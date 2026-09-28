@@ -1,62 +1,109 @@
 # EchoGPT Backend
 
-Production-ready backend for the EchoGPT Chrome Extension, built with NestJS, PostgreSQL, and Prisma.
+Backend REST API for the EchoGPT Chrome Extension, built with NestJS, PostgreSQL, and Prisma.
 
 ## Features
-Authentication (JWT + refresh token rotation), User Management, Role-Based
-Access Control (Admin/User), Subscription Management (Free/Premium + usage
-limits), AI Provider Management (OpenAI/Anthropic/Gemini with encrypted API
-keys), Chat API with conversation history, Web Search API, Admin Dashboard
-(stats, usage analytics, request logs, system health), full Swagger/OpenAPI
-documentation.
 
-## Tech Stack
-NestJS, PostgreSQL, Prisma ORM, Swagger/OpenAPI, JWT + Passport, bcrypt,
-AES-256-GCM (API key encryption).
+- Authentication with access JWTs and rotating refresh tokens
+- User profiles and role-based access control
+- Free and Premium subscriptions with request limits
+- Admin-managed OpenAI, Anthropic, and Gemini providers
+- Encrypted AI provider API keys
+- Chat conversations and message history
+- Wikipedia-backed web search and per-user search history
+- Admin dashboard, usage analytics, request logs, and health endpoint
+- Swagger/OpenAPI documentation
 
-## Setup
+## Technology stack
 
-1. Install dependencies:
-```bash
-   npm install
-```
+- NestJS and TypeScript
+- PostgreSQL and Prisma ORM
+- Swagger/OpenAPI
+- Passport JWT
+- bcrypt password hashing
+- AES-256-GCM encryption for provider API keys
 
-2. Create `.env` from the template:
-```bash
-   cp .env.example .env
-```
-   Fill in:
-   - `DATABASE_URL` — your PostgreSQL connection string
-   - `JWT_SECRET`, `JWT_REFRESH_SECRET` — random strings, minimum 32 characters each
-   - `AI_PROVIDER_ENCRYPTION_KEY` — must be exactly 32 bytes
-   - `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` — optional, only needed to actually call those providers
+## Prerequisites
 
-3. Run database migrations:
-```bash
-   npx prisma migrate deploy
-   npx prisma generate
-```
+- Node.js compatible with the installed NestJS and Prisma versions
+- npm
+- A running PostgreSQL database
 
-4. Seed roles and an admin account:
-```bash
-   npm run build
-   node dist/scripts/seed.js
-```
-   This creates `USER`/`ADMIN` roles and an admin user
-   (`admin@echogpt.dev` / `Admin123!Change` — change this password after first login).
+## Environment configuration
 
-5. Start the server:
-```bash
-   npm run start:dev
-```
+Copy `.env.example` to `.env`, then set the database connection and generate new secrets. Do not use the example secret values outside local setup.
 
-6. API docs: http://localhost:3000/api/docs
+Required variables:
 
-## Testing
-```bash
-npm test        # unit tests
-npm run test:e2e
-```
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `JWT_SECRET` | Signs access tokens; at least 32 characters |
+| `JWT_EXPIRES_IN` | Access-token lifetime, such as `15m` |
+| `JWT_REFRESH_SECRET` | Signs refresh tokens; use a different secret of at least 32 characters |
+| `JWT_REFRESH_EXPIRES_IN` | Refresh-token lifetime, such as `7d` |
+| `AI_PROVIDER_ENCRYPTION_KEY` | Exactly 32 printable ASCII characters (32 UTF-8 bytes) |
+| `PORT` | HTTP port, for example `3000` |
 
-## Database
-See `docs/database-architecture.md` for the full schema breakdown.
+`NODE_ENV` is optional and can be `development`, `test`, or `production`. The provider API key variables in `.env.example` are optional; provider keys can be configured through the admin provider API.
+
+Generate suitable local secret values with Node.js:
+
+    node -e "const c=require('crypto'); console.log('JWT_SECRET='+c.randomBytes(32).toString('hex')); console.log('JWT_REFRESH_SECRET='+c.randomBytes(32).toString('hex')); console.log('AI_PROVIDER_ENCRYPTION_KEY='+c.randomBytes(24).toString('base64url'))"
+
+Copy the generated values into `.env`. The encryption-key command produces 32 printable characters. Keep the encryption key stable after provider keys have been stored; changing it prevents the application from decrypting those stored keys.
+
+## Installation
+
+    npm install
+
+## Database setup
+
+Create the PostgreSQL database, configure `DATABASE_URL`, and apply migrations:
+
+    npx prisma migrate deploy
+    npx prisma generate
+
+Seed roles and the development admin account:
+
+    npm run build
+    node dist/scripts/seed.js
+
+The seed script creates `admin@echogpt.dev` with the password `Admin123!Change`. Change or replace these development credentials before using the application in a shared or production environment.
+
+## Run the application
+
+Development:
+
+    npm run start:dev
+
+Build and production start:
+
+    npm run build
+    npm run start:prod
+
+Swagger UI is available at:
+
+    http://localhost:3000/api/docs
+
+Use the configured `PORT` value if it is not `3000`.
+
+## API overview
+
+- Authentication: `/auth`
+- Profiles and admin endpoints: `/users`
+- Subscription and usage: `/subscriptions`
+- AI provider management: `/ai-providers`
+- Chat and conversations: `/chat`
+- Search and search history: `/search`
+
+Most application endpoints require a bearer access token. Admin endpoints require the `ADMIN` role.
+
+## Tests
+
+    npm test
+    npm run test:e2e
+
+## Database documentation
+
+See [docs/database-architecture.md](docs/database-architecture.md) for the schema overview.

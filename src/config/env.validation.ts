@@ -1,5 +1,6 @@
 import { plainToInstance } from 'class-transformer';
 import {
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -29,10 +30,22 @@ class EnvironmentVariables {
   @MinLength(32)
   JWT_REFRESH_SECRET!: string;
 
+  @IsString()
+  @Matches(/^\d+(ms|s|m|h|d|w|y)$/)
+  JWT_EXPIRES_IN!: string;
+
+  @IsString()
+  @Matches(/^\d+(ms|s|m|h|d|w|y)$/)
+  JWT_REFRESH_EXPIRES_IN!: string;
+
   @IsInt()
   @Min(1)
   @Max(65535)
   PORT!: number;
+
+  @IsOptional()
+  @IsIn(['development', 'test', 'production'])
+  NODE_ENV?: string;
 
   @IsOptional()
   @IsString()
@@ -48,6 +61,10 @@ class EnvironmentVariables {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[\x20-\x7E]{32}$/, {
+    message:
+      'AI_PROVIDER_ENCRYPTION_KEY must be exactly 32 printable ASCII characters (32 UTF-8 bytes)',
+  })
   AI_PROVIDER_ENCRYPTION_KEY!: string;
 }
 
