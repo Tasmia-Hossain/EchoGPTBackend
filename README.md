@@ -100,7 +100,7 @@ Use the configured `PORT` value if it is not `3000`.
 
 ## Docker Compose
 
-Prerequisites: Docker Desktop (or Docker Engine with the Compose plugin). Copy `.env.example` to `.env`, then replace the database password placeholder and configure fresh JWT and encryption secrets as described above. Use a URL-safe password made from letters and digits so it can be embedded in `DATABASE_URL`. Set `CORS_ORIGINS` to trusted browser-extension or frontend origins; do not use a wildcard. Compose uses `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_PORT` for its private PostgreSQL service. The API container receives only its required application settings and a `DATABASE_URL` pointing to the Compose `db` service; Compose overrides the host-local URL from `.env`. PostgreSQL is not published to a host port.
+Prerequisites: Docker Desktop (or Docker Engine with the Compose plugin). Copy `.env.example` to `.env`, then replace the database password placeholder and configure fresh JWT and encryption secrets as described above. Use a strong PostgreSQL password and keep it only in your local `.env` file. Docker Compose passes it to the PostgreSQL container and constructs the internal database connection for the API. Set `CORS_ORIGINS` to trusted browser-extension or frontend origins; do not use a wildcard. Compose uses `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_PORT` for its private PostgreSQL service. The API container receives only its required application settings and a `DATABASE_URL` pointing to the Compose `db` service; Compose overrides the host-local URL from `.env`. PostgreSQL is not published to a host port.
 
 Build and start both services:
 
