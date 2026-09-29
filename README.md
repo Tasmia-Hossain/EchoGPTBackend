@@ -98,6 +98,30 @@ Swagger UI is available at:
 
 Use the configured `PORT` value if it is not `3000`.
 
+## Docker Compose
+
+Prerequisites: Docker Desktop (or Docker Engine with the Compose plugin). Copy `.env.example` to `.env`, then replace the database password placeholder and configure fresh JWT and encryption secrets as described above. Use a URL-safe password made from letters and digits so it can be embedded in `DATABASE_URL`. Set `CORS_ORIGINS` to trusted browser-extension or frontend origins; do not use a wildcard. Compose uses `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_PORT` for its private PostgreSQL service. The API container receives only its required application settings and a `DATABASE_URL` pointing to the Compose `db` service; Compose overrides the host-local URL from `.env`. PostgreSQL is not published to a host port.
+
+Build and start both services:
+
+    docker compose up --build -d
+
+The API waits for the PostgreSQL healthcheck. On each API container start, Prisma runs `npx prisma migrate deploy` against the Compose database before starting NestJS. Migrations are not run during image build. The database uses the named `postgres_data` volume, which is retained by `docker compose down` and across container restarts.
+
+Follow API logs:
+
+    docker compose logs -f api
+
+Stop the services:
+
+    docker compose down
+
+If you want to seed the admin account, first set your own `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` in `.env` (the password must be at least 16 characters), then run the one-off seed profile:
+
+    docker compose --profile tools run --rm seed
+
+The seed script does not print the password. Never commit `.env`. Swagger is available at `http://localhost:3000/api/docs` unless you configured another `PORT` value.
+
 ## API overview
 
 - Authentication: `/auth`
